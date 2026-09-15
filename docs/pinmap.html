@@ -39,9 +39,9 @@
       <span><span class="sw" style="background:#424242"></span>GND</span>
       <span><span class="sw" style="background:#2e7d32"></span>GPS TXD → ESP RX</span>
       <span><span class="sw" style="background:#1e88e5"></span>ESP TX → GPS RXD</span>
-      <span><span class="sw" style="background:#fb8c00"></span>SCLK</span>
-      <span><span class="sw" style="background:#8e24aa"></span>SDI (MOSI)</span>
-      <span><span class="sw" style="background:#00897b"></span>SDO (MISO)</span>
+      <span><span class="sw" style="background:#fb8c00"></span>SCL/SCLK</span>
+      <span><span class="sw" style="background:#8e24aa"></span>SDA/MOSI</span>
+      <span><span class="sw" style="background:#00897b"></span>AD0/MISO</span>
       <span><span class="sw" style="background:#6d4c41"></span>CS</span>
       <span><span class="sw" style="background:#ffcdd2;border:1px solid #e57373"></span>사용 금지</span>
       <span><span class="sw" style="background:#fff3cd;border:1px solid #e0b84c"></span>주의(스트래핑·UART0·LED)</span>
@@ -58,13 +58,13 @@
         <tr><td>ATGM336H TXD</td><td>GPIO18</td><td><code>PIN_GPS_RX 18</code></td><td>GPS → ESP (NMEA 수신). TX↔RX 교차 연결</td></tr>
         <tr><td>ATGM336H RXD</td><td>GPIO17</td><td><code>PIN_GPS_TX 17</code></td><td>ESP → GPS (PCAS 설정 명령 송신)</td></tr>
         <tr><td>ATGM336H PPS</td><td>(미연결)</td><td>—</td><td>1초 펄스. 현재 미사용</td></tr>
-        <tr><td>ICM-42688-P VDD · VDDIO</td><td>3V3</td><td>—</td><td>브레이크아웃은 보통 VIN 하나로 묶여 있음</td></tr>
-        <tr><td>ICM-42688-P GND</td><td>GND</td><td>—</td><td></td></tr>
-        <tr><td>ICM-42688-P SCLK (SCL)</td><td>GPIO12</td><td><code>PIN_IMU_SCK 12</code></td><td>SPI 클럭, 8MHz, 모드 0</td></tr>
-        <tr><td>ICM-42688-P SDI (SDA)</td><td>GPIO11</td><td><code>PIN_IMU_MOSI 11</code></td><td>ESP → IMU</td></tr>
-        <tr><td>ICM-42688-P SDO (AD0)</td><td>GPIO13</td><td><code>PIN_IMU_MISO 13</code></td><td>IMU → ESP</td></tr>
-        <tr><td>ICM-42688-P CS</td><td>GPIO10</td><td><code>PIN_IMU_CS 10</code></td><td>LOW 활성. SPI 모드 선택을 위해 반드시 연결</td></tr>
-        <tr><td>ICM-42688-P INT1 / INT2</td><td>(미연결)</td><td>—</td><td>폴링 방식이라 미사용</td></tr>
+        <tr><td>IMU 모듈 VCC</td><td>3V3</td><td>—</td><td>모듈에 LDO가 있으면 3.3~5V 입력. 3V3 핀 전압이 3.0V 아래로 나오면 5V 핀으로 옮길 것</td></tr>
+        <tr><td>IMU 모듈 GND</td><td>GND</td><td>—</td><td></td></tr>
+        <tr><td>IMU 모듈 AD0/MISO</td><td>GPIO13</td><td><code>PIN_IMU_MISO 13</code></td><td>IMU → ESP (칩 핀명 SDO)</td></tr>
+        <tr><td>IMU 모듈 SDA/MOSI</td><td>GPIO11</td><td><code>PIN_IMU_MOSI 11</code></td><td>ESP → IMU (칩 핀명 SDI)</td></tr>
+        <tr><td>IMU 모듈 SCL/SCLK</td><td>GPIO12</td><td><code>PIN_IMU_SCK 12</code></td><td>SPI 클럭, 8MHz, 모드 0</td></tr>
+        <tr><td>IMU 모듈 CS</td><td>GPIO10</td><td><code>PIN_IMU_CS 10</code></td><td>LOW 활성. HIGH로 두면 I2C 모드가 되므로 반드시 연결</td></tr>
+        <tr><td>IMU 모듈 INT1 / INT2 / NC / 3V3</td><td>(미연결)</td><td>—</td><td>폴링 방식이라 인터럽트 미사용. 3V3는 모듈 LDO 출력</td></tr>
       </tbody>
     </table>
   </div>
@@ -76,6 +76,7 @@
       <li><span class="warn">GPIO19 · 20</span>은 USB D− / D+. 네이티브 USB 포트를 쓰지 않아도 비워 둔다.</li>
       <li>GPIO0 · 3 · 45 · 46은 부팅 스트래핑 핀. 부팅 시 레벨이 바뀌면 다운로드 모드나 플래시 전압이 틀어진다.</li>
       <li>GPIO43 · 44는 UART0(CH343 시리얼 모니터), GPIO48은 보드 RGB LED.</li>
+      <li>IMU 모듈의 SDA/SCL은 I2C 겸용 표기다. 이 프로젝트는 SPI로 쓰므로 SDA=MOSI, SCL=SCLK, AD0=MISO로 연결하고 CS를 ESP가 제어한다.</li>
       <li>GPS 모듈은 부팅 시 9600bps로 <code>$PCAS01,5</code>를 보내 115200bps로 올린 뒤 10Hz로 설정한다. 배선이 맞으면 시리얼 로그의 <code>chars</code>가 계속 증가한다.</li>
       <li>ATGM336H 세라믹 안테나는 하늘을 향해야 한다. 착용 위치는 견갑골 사이(조끼)가 가장 좋다.</li>
       <li>이 그림은 Espressif DevKitC-1 v1.1 헤더 배열이다. 클론 보드는 순서가 다를 수 있으니 <b>보드 실크에 인쇄된 GPIO 번호</b>로 맞춘다.</li>
@@ -102,18 +103,19 @@ const NETS=[
   {mod:'gps',pin:'GND', idx:21,color:'#424242'},
   {mod:'gps',pin:'TXD', idx:10,color:'#2e7d32'},
   {mod:'gps',pin:'RXD', idx:9, color:'#1e88e5'},
-  {mod:'imu',pin:'VDD·VDDIO',idx:1,color:'#e53935'},
-  {mod:'imu',pin:'GND', idx:21,color:'#424242'},
-  {mod:'imu',pin:'SCLK',idx:17,color:'#fb8c00'},
-  {mod:'imu',pin:'SDI', idx:16,color:'#8e24aa'},
-  {mod:'imu',pin:'SDO', idx:18,color:'#00897b'},
-  {mod:'imu',pin:'CS',  idx:15,color:'#6d4c41'},
+  {mod:'imu',pin:'VCC',     idx:1, color:'#e53935'},
+  {mod:'imu',pin:'GND',     idx:21,color:'#424242'},
+  {mod:'imu',pin:'AD0/MISO',idx:18,color:'#00897b'},
+  {mod:'imu',pin:'SDA/MOSI',idx:16,color:'#8e24aa'},
+  {mod:'imu',pin:'SCL/SCLK',idx:17,color:'#fb8c00'},
+  {mod:'imu',pin:'CS',      idx:15,color:'#6d4c41'},
 ];
 const MODS={
   gps:{title:'ATGM336H',sub:'GPS / BDS · UART 10Hz',x:70,y:70,w:230,h:220,
        pins:['VCC','GND','TXD','RXD','PPS'],note:'PPS 미사용'},
-  imu:{title:'ICM-42688-P',sub:'6축 IMU · SPI 100Hz',x:70,y:330,w:230,h:330,
-       pins:['VDD·VDDIO','GND','SCLK','SDI','SDO','CS','INT1'],note:'SCL=SCLK · SDA=SDI · AD0=SDO'},
+  imu:{title:'ICM-42688-P 모듈',sub:'6축 IMU · SPI 100Hz · 보라색 브레이크아웃',x:70,y:330,w:230,h:330,
+       pins:['VCC','GND','AD0/MISO','SDA/MOSI','SCL/SCLK','CS','INT1'],lpins:['3V3','NC','INT2'],
+       note:'실크 표기 그대로 · 3V3·NC·INT2·INT1 미연결'},
 };
 
 /* ---- 보드 ---- */
@@ -171,8 +173,15 @@ for(const key in MODS){
     add(gm,'circle',{cx:m.x+55,cy:m.y+105,r:4,fill:'#8d6e63'});
     add(gm,'text',{x:m.x+55,y:m.y+160,'font-size':10,fill:'#b0bec5','text-anchor':'middle'},'세라믹 안테나 ↑하늘');
   }else{ // 칩
-    add(gm,'rect',{x:m.x+28,y:m.y+90,width:44,height:44,fill:'#111',stroke:'#555'});
-    add(gm,'circle',{cx:m.x+34,cy:m.y+96,r:2.5,fill:'#888'});
+    add(gm,'rect',{x:m.x+28,y:m.y+80,width:44,height:44,fill:'#111',stroke:'#555'});
+    add(gm,'circle',{cx:m.x+34,cy:m.y+86,r:2.5,fill:'#888'});
+  }
+  if(m.lpins){ // 모듈 왼쪽 보조 헤더 (미연결)
+    m.lpins.forEach((p,i)=>{
+      const y=m.y+200+i*30, x=m.x;
+      add(gm,'circle',{cx:x,cy:y,r:6,fill:'#455a64',stroke:'#78909c','stroke-width':1.5});
+      add(gm,'text',{x:x+14,y:y+4,'font-size':11,fill:'#90a4ae'},p);
+    });
   }
   add(gm,'text',{x:m.x+14,y:m.y+m.h-12,'font-size':10,fill:'#90a4ae'},m.note);
   const py0=m.y+70;

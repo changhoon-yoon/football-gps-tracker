@@ -18,16 +18,18 @@ ATGM336H          ESP32-S3
   TXD  ──────────  GPIO18 (PIN_GPS_RX)
   RXD  ──────────  GPIO17 (PIN_GPS_TX)
 
-ICM-42688-P       ESP32-S3
-  VDD, VDDIO ────  3V3
+ICM-42688-P 모듈  ESP32-S3        (보라색 브레이크아웃 실크 기준)
+  VCC  ──────────  3V3             모듈 3V3 핀이 3.0V 아래로 나오면 5V로 옮길 것
   GND  ──────────  GND
-  SCLK ──────────  GPIO12
-  SDI  ──────────  GPIO11 (MOSI)
-  SDO  ──────────  GPIO13 (MISO)
-  CS   ──────────  GPIO10
+  AD0/MISO ──────  GPIO13
+  SDA/MOSI ──────  GPIO11
+  SCL/SCLK ──────  GPIO12
+  CS   ──────────  GPIO10          LOW 활성, HIGH면 I2C 모드
+  INT1, 3V3, NC, INT2 ── 미연결
 ```
 
 핀은 `include/pins.h`에서만 바꾸면 된다. GPIO35/36/37은 OPI PSRAM 전용이라 쓰지 말 것.
+그림으로 보려면 `docs/pinmap.html`을 브라우저로 연다.
 
 ## 빌드 · 업로드
 

@@ -10,9 +10,9 @@
 #define PIN_GPS_TX    17   // ESP32 TX  -> GPS RXD
 #define GpsSerial     Serial1
 
-// ---- ICM-42688-P IMU (SPI 모드 0, 3.3V) ----
-//  S3 기본 FSPI 핀. VDDIO/VDD → 3V3, GND → GND
-#define PIN_IMU_SCK   12   // SCLK
-#define PIN_IMU_MISO  13   // SDO / AD0
-#define PIN_IMU_MOSI  11   // SDI / SDA
-#define PIN_IMU_CS    10   // CS (LOW 활성)
+// ---- ICM-42688-P 모듈 (보라색 브레이크아웃, SPI 모드 0, 3.3V) ----
+//  S3 기본 FSPI 핀. 모듈 VCC → 3V3, GND → GND. 3V3/NC/INT1/INT2 미연결
+#define PIN_IMU_SCK   12   // 모듈 실크 SCL/SCLK
+#define PIN_IMU_MISO  13   // 모듈 실크 AD0/MISO (칩 SDO)
+#define PIN_IMU_MOSI  11   // 모듈 실크 SDA/MOSI (칩 SDI)
+#define PIN_IMU_CS    10   // 모듈 실크 CS (LOW 활성, HIGH면 I2C 모드)

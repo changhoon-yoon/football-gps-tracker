@@ -7,6 +7,7 @@ const char* UUID_FIX   = "f007ba11-0001-4c45-8000-000000000000";
 const char* UUID_STATS = "f007ba11-0002-4c45-8000-000000000000";
 const char* UUID_HIST  = "f007ba11-0003-4c45-8000-000000000000";
 const char* UUID_CTRL  = "f007ba11-0004-4c45-8000-000000000000";
+const char* UUID_IMU   = "f007ba11-0005-4c45-8000-000000000000";
 
 constexpr uint32_t HIST_CHUNK_MS = 30;     // 청크 간격 (연결 간격 7.5~15ms 요청과 맞물려 큐 넘침 방지)
 constexpr size_t   HIST_MAX_PTS  = 30;     // 청크당 최대 점 (30×8B = 240B ≤ MTU 247-3)
@@ -15,6 +16,7 @@ NimBLECharacteristic* s_fix   = nullptr;
 NimBLECharacteristic* s_stats = nullptr;
 NimBLECharacteristic* s_hist  = nullptr;
 NimBLECharacteristic* s_ctrl  = nullptr;
+NimBLECharacteristic* s_imu   = nullptr;
 TrackStore*  s_track = nullptr;
 void (*s_onReset)() = nullptr;
 
@@ -77,6 +79,7 @@ void bleSetup(const char* name, TrackStore* track, void (*onReset)()) {
   s_stats = svc->createCharacteristic(UUID_STATS, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
   s_hist  = svc->createCharacteristic(UUID_HIST,  NIMBLE_PROPERTY::NOTIFY);
   s_ctrl  = svc->createCharacteristic(UUID_CTRL,  NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
+  s_imu   = svc->createCharacteristic(UUID_IMU,   NIMBLE_PROPERTY::NOTIFY);
   s_ctrl->setCallbacks(new CtrlCB());
   s_hist->setCallbacks(new HistCB());
   svc->start();
@@ -105,6 +108,14 @@ void bleNotifyStats(const uint8_t* frame, size_t len) {
   if (!s_connected || !s_stats) return;
   s_stats->setValue(frame, len);
   s_stats->notify();
+}
+
+void bleNotifyImu(const uint8_t* frame, size_t len) {
+  if (!s_connected || !s_imu) return;
+  const uint8_t* p = frame; size_t n = len;
+  if ((size_t)s_mtu < len + 3 && len >= 12) { p = frame + len - 12; n = 12; }   // MTU 부족 → 마지막 샘플만
+  s_imu->setValue(p, n);
+  s_imu->notify();
 }
 
 bool bleConnected() { return s_connected; }

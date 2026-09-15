@@ -311,7 +311,34 @@ static void pushStatus(bool stored) {
 #endif
 }
 
-// IMU 100Hz 샘플링 → PlayerLoad (Catapult 정의: Σ√(Δax²+Δay²+Δaz²)/100, 단위 g)
+// ---- IMU 스트림: 100Hz 중 4개마다 1개(25Hz)를 5개씩 묶어 200ms마다 전송 (SSE 'imu' 이벤트 / BLE IMU 특성) ----
+struct ImuSample { int16_t a[3]; int16_t g[3]; };   // mg, 0.1 °/s
+static ImuSample g_imuBatch[5];
+static uint8_t   g_imuN = 0, g_imuDecim = 0;
+
+static void imuEmit() {
+  if (events.count() > 0) {
+    char buf[240]; int n = snprintf(buf, sizeof buf, "{\"s\":[");
+    for (int i = 0; i < 5 && n < (int)sizeof buf - 40; i++) {
+      const ImuSample& s = g_imuBatch[i];
+      n += snprintf(buf + n, sizeof buf - n, "%s[%d,%d,%d,%d,%d,%d]", i ? "," : "", s.a[0], s.a[1], s.a[2], s.g[0], s.g[1], s.g[2]);
+    }
+    snprintf(buf + n, sizeof buf - n, "]}");
+    events.send(buf, "imu", millis());
+  }
+#if ENABLE_BLE
+  if (bleConnected()) {
+    uint8_t b[60];
+    for (int i = 0; i < 5; i++) {
+      const ImuSample& s = g_imuBatch[i];
+      for (int k = 0; k < 3; k++) { putU16(b + i * 12 + k * 2, (uint16_t)s.a[k]); putU16(b + i * 12 + 6 + k * 2, (uint16_t)s.g[k]); }
+    }
+    bleNotifyImu(b, sizeof b);
+  }
+#endif
+}
+
+// IMU 100Hz 샘플링 → PlayerLoad (Catapult 정의: Σ√(Δax²+Δay²+Δaz²)/100, 단위 g) + 25Hz 스트림
 static void imuTask() {
   static uint32_t next_ms = 0;
   static float    pax = 0, pay = 0, paz = 0;
@@ -326,6 +353,14 @@ static void imuTask() {
     S.player_load += sqrtf(dx * dx + dy * dy + dz * dz) / 100.0f;
   }
   pax = ax; pay = ay; paz = az; have = true;
+
+  if (++g_imuDecim >= 4) {
+    g_imuDecim = 0;
+    ImuSample& s = g_imuBatch[g_imuN++];
+    s.a[0] = (int16_t)lroundf(ax * 1000.0f); s.a[1] = (int16_t)lroundf(ay * 1000.0f); s.a[2] = (int16_t)lroundf(az * 1000.0f);
+    s.g[0] = (int16_t)lroundf(gx * 10.0f);   s.g[1] = (int16_t)lroundf(gy * 10.0f);   s.g[2] = (int16_t)lroundf(gz * 10.0f);
+    if (g_imuN >= 5) { imuEmit(); g_imuN = 0; }
+  }
 }
 
 // ============================================================

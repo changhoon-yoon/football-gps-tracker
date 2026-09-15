@@ -44,20 +44,46 @@ button,a.btn{flex:1 1 0;min-width:0;padding:9px 0;border:0;border-radius:8px;bac
 #feed{font:11px/1.35 ui-monospace,Consolas,monospace;white-space:pre;margin:6px 0 0;color:#cfd8dc;height:22vh;overflow:auto;background:#0d1013;border-radius:6px;padding:6px}
 .gpb{display:flex;gap:6px;margin-top:8px}
 .gpb button,.gpb a.btn{padding:6px 2px;font-size:12px}
+/* 상세 패널 탭 + IMU 시각화 */
+.tabs{display:flex;gap:6px;margin-bottom:8px}
+.tb{flex:0 0 auto!important;padding:4px 14px!important;font-size:12px!important;background:#2a2e33!important}
+.tb.on{background:#2f6feb!important}
+.ch{margin-top:6px}
+.ch .cl{font-size:11px;color:#9aa;display:flex;justify-content:space-between}
+.ch .cl i{font-style:normal;font-weight:700}
+.ch canvas{display:block;width:100%;height:78px;background:#0d1013;border-radius:6px;margin-top:2px}
+.tilt{display:flex;align-items:center;gap:12px;margin-top:8px}
+.tilt canvas{width:64px;height:64px;flex:0 0 64px}
+.tilt span{font-size:12px;color:#cfd8dc}
 </style></head><body>
 <div id="map"></div><canvas id="local"></canvas>
 <div id="st">연결 중…</div>
 <div id="gp">
- <div class="kv">
-  <b>위도</b><span id="g_lat">-</span><b>경도</b><span id="g_lon">-</span>
-  <b>고도</b><span id="g_alt">-</span><b>속도</b><span id="g_spd">-</span>
-  <b>방향</b><span id="g_crs">-</span><b>위성</b><span id="g_sat">-</span>
-  <b>HDOP</b><span id="g_hdop">-</span><b>UTC</b><span id="g_utc">-</span>
-  <b>수신</b><span id="g_hz">-</span><b>경로</b><span id="g_src">-</span>
+ <div class="tabs"><button class="tb on" data-t="gps">GPS</button><button class="tb" data-t="imu">IMU</button></div>
+ <div id="tab-gps">
+  <div class="kv">
+   <b>위도</b><span id="g_lat">-</span><b>경도</b><span id="g_lon">-</span>
+   <b>고도</b><span id="g_alt">-</span><b>속도</b><span id="g_spd">-</span>
+   <b>방향</b><span id="g_crs">-</span><b>위성</b><span id="g_sat">-</span>
+   <b>HDOP</b><span id="g_hdop">-</span><b>UTC</b><span id="g_utc">-</span>
+   <b>수신</b><span id="g_hz">-</span><b>경로</b><span id="g_src">-</span>
+  </div>
+  <div id="nmea"></div>
+  <pre id="feed"></pre>
+  <div class="gpb"><button class="sec" id="g_copy">좌표 복사</button><a class="btn sec" id="g_map" href="#" target="_blank" rel="noopener">지도앱</a><button class="sec" id="g_clear">피드 지우기</button></div>
  </div>
- <div id="nmea"></div>
- <pre id="feed"></pre>
- <div class="gpb"><button class="sec" id="g_copy">좌표 복사</button><a class="btn sec" id="g_map" href="#" target="_blank" rel="noopener">지도앱</a><button class="sec" id="g_clear">피드 지우기</button></div>
+ <div id="tab-imu" hidden>
+  <div class="kv">
+   <b>가속 X</b><span id="i_ax">-</span><b>자이로 X</b><span id="i_gx">-</span>
+   <b>가속 Y</b><span id="i_ay">-</span><b>자이로 Y</b><span id="i_gy">-</span>
+   <b>가속 Z</b><span id="i_az">-</span><b>자이로 Z</b><span id="i_gz">-</span>
+   <b>|a|</b><span id="i_mag">-</span><b>피크 10s</b><span id="i_peak">-</span>
+   <b>PL</b><span id="i_pl">-</span><b>샘플</b><span id="i_hz">-</span>
+  </div>
+  <div class="ch"><div class="cl"><span>가속도 (g) · 최근 6초</span><span><i style="color:#ef4444">X</i> <i style="color:#22c55e">Y</i> <i style="color:#3b82f6">Z</i></span></div><canvas id="ca"></canvas></div>
+  <div class="ch"><div class="cl"><span>각속도 (°/s)</span><span><i style="color:#ef4444">X</i> <i style="color:#22c55e">Y</i> <i style="color:#3b82f6">Z</i></span></div><canvas id="cg"></canvas></div>
+  <div class="tilt"><canvas id="ct"></canvas><span id="i_tilt">기울기 - (가속도 기준 피치·롤, 정지 시 정확)</span></div>
+ </div>
 </div>
 <div id="hud">
  <div class="tiles">
@@ -133,8 +159,9 @@ function update(d){
   else if(d.fix)s+='<b class="ok">● FIX</b> · 위성 '+d.sat+' · HDOP '+d.hdop.toFixed(1)+' · 점 '+d.n;
   else s+='<b class="warn">● 위성 탐색 중</b> · 보이는 위성 '+(d.siv||0)+'개'+((d.siv||0)<4?' · 하늘이 보이는 실외로 (첫 fix 1~2분)':' · 곧 잡힘');
   if(d.imu)s+=' · PL '+d.pl.toFixed(0);
-  s+='<span class="tg">GPS '+(gpOpen?'▴':'▾')+'</span>';
+  s+='<span class="tg">상세 '+(gpOpen?'▴':'▾')+'</span>';
   $('st').innerHTML=s;
+  lastPl=d.pl||0;
   gpsPanel(d);
   if(d.fix){const p=[d.lat,d.lon];last=p;if(d.pt)addPt(p);
     if(hasL){marker.setLatLng(p);if(!centered){map.setView(p,17);centered=true;}else if(follow)map.panTo(p,{animate:false});}
@@ -159,7 +186,54 @@ function gpsPanel(d){
   if(feedN>60){f.textContent=f.textContent.split('\n').slice(-60).join('\n');feedN=60;}
   if(gpOpen)f.scrollTop=f.scrollHeight;
 }
-$('st').onclick=()=>{gpOpen=!gpOpen;$('gp').classList.toggle('open',gpOpen);if(gpOpen){const f=$('feed');f.scrollTop=f.scrollHeight;}};
+$('st').onclick=()=>{gpOpen=!gpOpen;$('gp').classList.toggle('open',gpOpen);if(gpOpen){const f=$('feed');f.scrollTop=f.scrollHeight;if(imuTab)drawImu();}};
+document.querySelectorAll('.tb').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tb').forEach(x=>x.classList.toggle('on',x===b));
+  imuTab=b.dataset.t==='imu';$('tab-gps').hidden=imuTab;$('tab-imu').hidden=!imuTab;if(imuTab)drawImu();});
+
+/* ---- IMU 탭: 25Hz 샘플(200ms 묶음) → 수치 + 스트립 차트 + 기울기 ---- */
+const IMU_N=150;                                        // 6초 @25Hz
+let imuA=[[],[],[]],imuG=[[],[],[]],imuTimes=[],imuPeak=[],imuTab=false,imuLast=null,lastPl=0;
+function onImuBatch(samples){                          // [[ax,ay,az(g),gx,gy,gz(°/s)],...]
+  const now=performance.now();
+  for(const s of samples){
+    for(let i=0;i<3;i++){imuA[i].push(s[i]);imuG[i].push(s[3+i]);if(imuA[i].length>IMU_N){imuA[i].shift();imuG[i].shift();}}
+    imuPeak.push([now,Math.hypot(s[0],s[1],s[2])]);imuTimes.push(now);
+  }
+  while(imuPeak.length&&now-imuPeak[0][0]>10000)imuPeak.shift();
+  while(imuTimes.length&&now-imuTimes[0]>2000)imuTimes.shift();
+  imuLast=samples[samples.length-1];
+  if(gpOpen&&imuTab)drawImu();
+}
+function drawImu(){
+  const s=imuLast;if(!s)return;
+  const m=Math.hypot(s[0],s[1],s[2]);
+  $('i_ax').textContent=s[0].toFixed(2)+' g';$('i_ay').textContent=s[1].toFixed(2)+' g';$('i_az').textContent=s[2].toFixed(2)+' g';
+  $('i_gx').textContent=s[3].toFixed(0)+' °/s';$('i_gy').textContent=s[4].toFixed(0)+' °/s';$('i_gz').textContent=s[5].toFixed(0)+' °/s';
+  $('i_mag').textContent=m.toFixed(2)+' g';$('i_peak').textContent=Math.max(0,...imuPeak.map(p=>p[1])).toFixed(2)+' g';
+  $('i_pl').textContent=lastPl.toFixed(1);$('i_hz').textContent=(imuTimes.length/2).toFixed(0)+' Hz';
+  drawStrip($('ca'),imuA,2);drawStrip($('cg'),imuG,250);
+  const pitch=Math.atan2(s[0],Math.hypot(s[1],s[2]))*180/Math.PI,roll=Math.atan2(s[1],s[2])*180/Math.PI;
+  drawTilt($('ct'),pitch,roll);$('i_tilt').textContent='피치 '+pitch.toFixed(0)+'° · 롤 '+roll.toFixed(0)+'° (정지 시 정확)';
+}
+function drawStrip(cv,series,minScale){
+  const dpr=devicePixelRatio||1,W=cv.width=cv.clientWidth*dpr,H=cv.height=cv.clientHeight*dpr,c=cv.getContext('2d');
+  c.fillStyle='#0d1013';c.fillRect(0,0,W,H);
+  let peak=minScale;for(const s of series)for(const v of s)if(Math.abs(v)>peak)peak=Math.abs(v);
+  const sc=(H/2-4*dpr)/peak;
+  c.strokeStyle='#2a2e33';c.lineWidth=dpr;c.beginPath();c.moveTo(0,H/2);c.lineTo(W,H/2);c.stroke();
+  const cols=['#ef4444','#22c55e','#3b82f6'];
+  series.forEach((s,i)=>{if(!s.length)return;c.strokeStyle=cols[i];c.lineWidth=1.5*dpr;c.beginPath();
+    for(let k=0;k<s.length;k++){const x=W-(s.length-1-k)*(W/IMU_N),y=H/2-s[k]*sc;k?c.lineTo(x,y):c.moveTo(x,y);}c.stroke();});
+  c.fillStyle='#9aa';c.font=(10*dpr)+'px system-ui';c.fillText('±'+(peak>=10?peak.toFixed(0):peak.toFixed(1)),4*dpr,11*dpr);
+}
+function drawTilt(cv,pitch,roll){
+  const dpr=devicePixelRatio||1,W=cv.width=cv.clientWidth*dpr,H=cv.height=cv.clientHeight*dpr,c=cv.getContext('2d'),r=W/2-2*dpr;
+  c.clearRect(0,0,W,H);c.strokeStyle='#3a3f46';c.lineWidth=dpr;
+  c.beginPath();c.arc(W/2,H/2,r,0,7);c.stroke();
+  c.beginPath();c.moveTo(W/2,2*dpr);c.lineTo(W/2,H-2*dpr);c.moveTo(2*dpr,H/2);c.lineTo(W-2*dpr,H/2);c.stroke();
+  const k=r/90,x=W/2+Math.max(-90,Math.min(90,roll))*k,y=H/2-Math.max(-90,Math.min(90,pitch))*k;
+  c.fillStyle='#f5c542';c.beginPath();c.arc(x,y,5*dpr,0,7);c.fill();
+}
 $('g_clear').onclick=()=>{$('feed').textContent='';feedN=0;};
 $('g_copy').onclick=()=>{if(!last)return;const t=last[0].toFixed(7)+','+last[1].toFixed(7);
   (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>{$('g_copy').textContent='복사됨';setTimeout(()=>$('g_copy').textContent='좌표 복사',1200);}).catch(()=>prompt('좌표',t));};
@@ -171,12 +245,13 @@ function loadTrack(){return fetch('/track',{cache:'no-store'}).then(r=>r.json())
 function connectSse(){
   es=new EventSource('/events');
   es.addEventListener('fix',e=>{if(!bleOn)update(JSON.parse(e.data));});
+  es.addEventListener('imu',e=>{if(!bleOn){const j=JSON.parse(e.data);onImuBatch(j.s.map(v=>[v[0]/1000,v[1]/1000,v[2]/1000,v[3]/10,v[4]/10,v[5]/10]));}});
   es.onopen=()=>{if(dropped){dropped=false;loadTrack().catch(()=>{});}};
   es.onerror=()=>{dropped=true;if(!bleOn)$('st').innerHTML='<b class="bad">● 연결 끊김</b> 재접속 중…';};
 }
 
 /* ---- BLE 경로: Web Bluetooth (규격은 src/ble_link.h) ---- */
-const U={svc:'f007ba11-0000-4c45-8000-000000000000',fix:'f007ba11-0001-4c45-8000-000000000000',stats:'f007ba11-0002-4c45-8000-000000000000',hist:'f007ba11-0003-4c45-8000-000000000000',ctrl:'f007ba11-0004-4c45-8000-000000000000'};
+const U={svc:'f007ba11-0000-4c45-8000-000000000000',fix:'f007ba11-0001-4c45-8000-000000000000',stats:'f007ba11-0002-4c45-8000-000000000000',hist:'f007ba11-0003-4c45-8000-000000000000',ctrl:'f007ba11-0004-4c45-8000-000000000000',imu:'f007ba11-0005-4c45-8000-000000000000'};
 let bleOn=false,bleDev=null,bleCtrl=null,histBuf=[],wake=null;
 async function keepAwake(){try{if(navigator.wakeLock)wake=await navigator.wakeLock.request('screen');}catch(_){}}
 async function bleConnect(){
@@ -194,6 +269,7 @@ async function bleConnect(){
     cHist.addEventListener('characteristicvaluechanged',e=>onHist(e.target.value));
     await cStats.startNotifications();
     await cFix.startNotifications();
+    try{const cImu=await svc.getCharacteristic(U.imu);cImu.addEventListener('characteristicvaluechanged',e=>onImu(e.target.value));await cImu.startNotifications();}catch(_){}  // 구형 펌웨어면 없음
     histBuf=[];
     await cHist.startNotifications();                  // 구독 즉시 ESP가 이력을 재생
     bleOn=true;$('ble').textContent='BLE 연결됨';$('ble').classList.add('on');
@@ -227,6 +303,11 @@ function onStats(v){
   stats={max:v.getUint16(0,true)/10,el:v.getUint16(2,true),z:[0,1,2,3,4].map(i=>v.getUint16(4+i*2,true)),
     spr:v.getUint16(14,true),pl:v.getUint16(16,true)/10,n:v.getUint16(18,true),alt:v.byteLength>=22?v.getInt16(20,true):null};
 }
+function onImu(v){
+  const n=Math.floor(v.byteLength/12),arr=[];
+  for(let i=0;i<n;i++){const o=i*12;arr.push([v.getInt16(o,true)/1000,v.getInt16(o+2,true)/1000,v.getInt16(o+4,true)/1000,v.getInt16(o+6,true)/10,v.getInt16(o+8,true)/10,v.getInt16(o+10,true)/10]);}
+  if(n)onImuBatch(arr);
+}
 function onHist(v){
   for(let o=0;o+8<=v.byteLength;o+=8){
     const a=v.getInt32(o,true);
@@ -258,6 +339,10 @@ $('gpx').onclick=e=>{
   a.href=u;a.download='foottrack.gpx';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),2000);
 };
 document.addEventListener('visibilitychange',()=>{if(bleOn&&document.visibilityState==='visible')keepAwake();});
+if(location.hash==='#gps'||location.hash==='#imu'){                 // 주소 끝에 #imu 붙이면 IMU 탭이 열린 채 시작
+  gpOpen=true;$('gp').classList.add('open');
+  if(location.hash==='#imu')document.querySelector('.tb[data-t="imu"]').click();
+}
 window.addEventListener('resize',()=>drawLocal(last));
 })();
 </script></body></html>

@@ -6,6 +6,7 @@
 //   STATS  ...-0002  notify 1Hz,  22B
 //   HIST   ...-0003  notify, 저장 동선 재생: 점당 8B(lat_e7,lon_e7) × N, 끝 마커 = lat 0x7FFFFFFF + 총점수
 //   CTRL   ...-0004  write 1B: 0x01 리셋, 0x02 이력 재요청
+//   IMU    ...-0005  notify 5Hz, 샘플 12B(i16 ax,ay,az mg + i16 gx,gy,gz 0.1°/s) × 5개 = 60B (MTU 작으면 마지막 1개만)
 //
 //  FIX (little-endian, 20B)
 //   0  u8  flags  bit0 fix, bit1 gps alive, bit2 imu ok, bit3 점 저장됨, bit4 세션 시작
@@ -33,5 +34,6 @@ void bleSetup(const char* name, TrackStore* track, void (*onReset)());
 void bleLoop();                                   // 이력 스트리밍 진행 (loop에서 호출)
 void bleNotifyFix(const uint8_t* frame, size_t len);
 void bleNotifyStats(const uint8_t* frame, size_t len);
+void bleNotifyImu(const uint8_t* frame, size_t len);   // 12B 샘플 배열
 bool bleConnected();
 uint16_t bleMtu();

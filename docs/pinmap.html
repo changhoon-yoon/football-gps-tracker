@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FootTrack 핀맵</title>
+<style>
+  :root{--bg:#f6f7f9;--fg:#1c1f24;--muted:#5f6670;--card:#fff;--line:#d9dde3;--board:#1b5e20;--board2:#2e7d32;--pad:#f2f2f2}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI","Malgun Gothic",sans-serif;font-size:14px;line-height:1.5}
+  .wrap{max-width:1080px;margin:0 auto;padding:24px 16px 48px}
+  h1{font-size:22px;margin:0 0 4px}
+  .sub{color:var(--muted);margin:0 0 18px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:18px}
+  .svgbox{overflow-x:auto}
+  svg{display:block;width:100%;max-width:1040px;height:auto;margin:0 auto}
+  h2{font-size:16px;margin:0 0 10px}
+  table{border-collapse:collapse;width:100%;font-size:13.5px}
+  th,td{border-bottom:1px solid var(--line);padding:7px 8px;text-align:left;vertical-align:top}
+  th{background:#eef1f5;font-weight:600}
+  td code,li code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-family:Consolas,"D2Coding",monospace;font-size:12.5px}
+  .sw{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-1px;margin-right:6px}
+  .legend{display:flex;flex-wrap:wrap;gap:8px 18px;color:var(--muted);font-size:12.5px;margin-top:10px}
+  ul{margin:0;padding-left:20px}
+  li{margin:3px 0}
+  .warn{color:#b71c1c;font-weight:600}
+  @media print{body{background:#fff}.card{border:0;padding:0}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>FootTrack 핀맵</h1>
+  <p class="sub">ESP32-S3-WROOM-1 N16R8 (DevKitC-1 배열) · ATGM336H GPS · ICM-42688-P IMU — 모든 신호 3.3V</p>
+
+  <div class="card svgbox">
+    <svg id="d" viewBox="0 0 1040 760" xmlns="http://www.w3.org/2000/svg" font-family="system-ui,'Malgun Gothic',sans-serif"></svg>
+    <div class="legend">
+      <span><span class="sw" style="background:#e53935"></span>3V3</span>
+      <span><span class="sw" style="background:#424242"></span>GND</span>
+      <span><span class="sw" style="background:#2e7d32"></span>GPS TXD → ESP RX</span>
+      <span><span class="sw" style="background:#1e88e5"></span>ESP TX → GPS RXD</span>
+      <span><span class="sw" style="background:#fb8c00"></span>SCLK</span>
+      <span><span class="sw" style="background:#8e24aa"></span>SDI (MOSI)</span>
+      <span><span class="sw" style="background:#00897b"></span>SDO (MISO)</span>
+      <span><span class="sw" style="background:#6d4c41"></span>CS</span>
+      <span><span class="sw" style="background:#ffcdd2;border:1px solid #e57373"></span>사용 금지</span>
+      <span><span class="sw" style="background:#fff3cd;border:1px solid #e0b84c"></span>주의(스트래핑·UART0·LED)</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>연결 표</h2>
+    <table>
+      <thead><tr><th>모듈 핀</th><th>ESP32-S3 핀</th><th>코드 상수 (include/pins.h)</th><th>설명</th></tr></thead>
+      <tbody>
+        <tr><td>ATGM336H VCC</td><td>3V3</td><td>—</td><td>3.3V 전원 (모듈 소비 약 25mA)</td></tr>
+        <tr><td>ATGM336H GND</td><td>GND</td><td>—</td><td>아무 GND 핀</td></tr>
+        <tr><td>ATGM336H TXD</td><td>GPIO18</td><td><code>PIN_GPS_RX 18</code></td><td>GPS → ESP (NMEA 수신). TX↔RX 교차 연결</td></tr>
+        <tr><td>ATGM336H RXD</td><td>GPIO17</td><td><code>PIN_GPS_TX 17</code></td><td>ESP → GPS (PCAS 설정 명령 송신)</td></tr>
+        <tr><td>ATGM336H PPS</td><td>(미연결)</td><td>—</td><td>1초 펄스. 현재 미사용</td></tr>
+        <tr><td>ICM-42688-P VDD · VDDIO</td><td>3V3</td><td>—</td><td>브레이크아웃은 보통 VIN 하나로 묶여 있음</td></tr>
+        <tr><td>ICM-42688-P GND</td><td>GND</td><td>—</td><td></td></tr>
+        <tr><td>ICM-42688-P SCLK (SCL)</td><td>GPIO12</td><td><code>PIN_IMU_SCK 12</code></td><td>SPI 클럭, 8MHz, 모드 0</td></tr>
+        <tr><td>ICM-42688-P SDI (SDA)</td><td>GPIO11</td><td><code>PIN_IMU_MOSI 11</code></td><td>ESP → IMU</td></tr>
+        <tr><td>ICM-42688-P SDO (AD0)</td><td>GPIO13</td><td><code>PIN_IMU_MISO 13</code></td><td>IMU → ESP</td></tr>
+        <tr><td>ICM-42688-P CS</td><td>GPIO10</td><td><code>PIN_IMU_CS 10</code></td><td>LOW 활성. SPI 모드 선택을 위해 반드시 연결</td></tr>
+        <tr><td>ICM-42688-P INT1 / INT2</td><td>(미연결)</td><td>—</td><td>폴링 방식이라 미사용</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>주의 사항</h2>
+    <ul>
+      <li><span class="warn">GPIO35 · 36 · 37</span>은 N16R8의 OPI PSRAM 전용. 연결하면 PSRAM이 죽는다.</li>
+      <li><span class="warn">GPIO19 · 20</span>은 USB D− / D+. 네이티브 USB 포트를 쓰지 않아도 비워 둔다.</li>
+      <li>GPIO0 · 3 · 45 · 46은 부팅 스트래핑 핀. 부팅 시 레벨이 바뀌면 다운로드 모드나 플래시 전압이 틀어진다.</li>
+      <li>GPIO43 · 44는 UART0(CH343 시리얼 모니터), GPIO48은 보드 RGB LED.</li>
+      <li>GPS 모듈은 부팅 시 9600bps로 <code>$PCAS01,5</code>를 보내 115200bps로 올린 뒤 10Hz로 설정한다. 배선이 맞으면 시리얼 로그의 <code>chars</code>가 계속 증가한다.</li>
+      <li>ATGM336H 세라믹 안테나는 하늘을 향해야 한다. 착용 위치는 견갑골 사이(조끼)가 가장 좋다.</li>
+      <li>이 그림은 Espressif DevKitC-1 v1.1 헤더 배열이다. 클론 보드는 순서가 다를 수 있으니 <b>보드 실크에 인쇄된 GPIO 번호</b>로 맞춘다.</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+(function(){
+const NS='http://www.w3.org/2000/svg';
+const svg=document.getElementById('d');
+const el=(t,a,txt)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(txt!=null)e.textContent=txt;return e;};
+const add=(p,t,a,txt)=>{const e=el(t,a,txt);p.appendChild(e);return e;};
+
+/* ---- DevKitC-1 v1.1 헤더 (위→아래) ---- */
+const LEFT =['3V3','3V3','RST','4','5','6','7','15','16','17','18','8','3','46','9','10','11','12','13','14','5V','GND'];
+const RIGHT=['GND','43','44','1','2','42','41','40','39','38','37','36','35','0','45','48','47','21','20','19','GND','GND'];
+const FORBID={'35':'PSRAM','36':'PSRAM','37':'PSRAM','19':'USB D−','20':'USB D+'};
+const CAUTION={'0':'스트랩','3':'스트랩','45':'스트랩','46':'스트랩','43':'UART0 TX','44':'UART0 RX','48':'RGB LED'};
+
+/* ---- 배선 (모듈 핀 → 왼쪽 헤더 인덱스) ---- */
+const NETS=[
+  {mod:'gps',pin:'VCC', idx:0, color:'#e53935'},
+  {mod:'gps',pin:'GND', idx:21,color:'#424242'},
+  {mod:'gps',pin:'TXD', idx:10,color:'#2e7d32'},
+  {mod:'gps',pin:'RXD', idx:9, color:'#1e88e5'},
+  {mod:'imu',pin:'VDD·VDDIO',idx:1,color:'#e53935'},
+  {mod:'imu',pin:'GND', idx:21,color:'#424242'},
+  {mod:'imu',pin:'SCLK',idx:17,color:'#fb8c00'},
+  {mod:'imu',pin:'SDI', idx:16,color:'#8e24aa'},
+  {mod:'imu',pin:'SDO', idx:18,color:'#00897b'},
+  {mod:'imu',pin:'CS',  idx:15,color:'#6d4c41'},
+];
+const MODS={
+  gps:{title:'ATGM336H',sub:'GPS / BDS · UART 10Hz',x:70,y:70,w:230,h:220,
+       pins:['VCC','GND','TXD','RXD','PPS'],note:'PPS 미사용'},
+  imu:{title:'ICM-42688-P',sub:'6축 IMU · SPI 100Hz',x:70,y:330,w:230,h:330,
+       pins:['VDD·VDDIO','GND','SCLK','SDI','SDO','CS','INT1'],note:'SCL=SCLK · SDA=SDI · AD0=SDO'},
+};
+
+/* ---- 보드 ---- */
+const BX=640,BW=270,BY=40,BH=690,Y0=66,PITCH=29;
+const g=add(svg,'g',{});
+add(g,'rect',{x:BX,y:BY,width:BW,height:BH,rx:14,fill:'#1b5e20',stroke:'#0d3b12','stroke-width':2});
+// WROOM 모듈 + 안테나
+add(g,'rect',{x:BX+70,y:BY+18,width:130,height:150,rx:4,fill:'#b0bec5',stroke:'#78909c'});
+add(g,'rect',{x:BX+70,y:BY+18,width:130,height:38,fill:'#e0e0e0'});
+add(g,'path',{d:`M${BX+80},${BY+37} h8 v-10 h8 v20 h8 v-20 h8 v20 h8 v-20 h8 v20 h8 v-20 h8 v20 h8 v-20 h8 v20 h8 v-10 h8`,fill:'none',stroke:'#616161','stroke-width':1.5});
+add(g,'text',{x:BX+135,y:BY+100,'text-anchor':'middle','font-size':12,'font-weight':600,fill:'#263238'},'ESP32-S3');
+add(g,'text',{x:BX+135,y:BY+118,'text-anchor':'middle','font-size':11,fill:'#263238'},'WROOM-1');
+add(g,'text',{x:BX+135,y:BY+136,'text-anchor':'middle','font-size':11,fill:'#263238'},'N16R8');
+// USB 포트 2개 (아래)
+add(g,'rect',{x:BX+50,y:BY+BH-40,width:60,height:34,rx:4,fill:'#cfd8dc',stroke:'#90a4ae'});
+add(g,'text',{x:BX+80,y:BY+BH-18,'text-anchor':'middle','font-size':10,fill:'#37474f'},'UART (CH343)');
+add(g,'rect',{x:BX+160,y:BY+BH-40,width:60,height:34,rx:4,fill:'#cfd8dc',stroke:'#90a4ae'});
+add(g,'text',{x:BX+190,y:BY+BH-18,'text-anchor':'middle','font-size':10,fill:'#37474f'},'USB (native)');
+add(g,'text',{x:BX+BW/2,y:BY+BH-60,'text-anchor':'middle','font-size':11,fill:'#c8e6c9'},'DevKitC-1 v1.1 배열');
+
+const used={};NETS.forEach(n=>{used[n.idx]=used[n.idx]||[];used[n.idx].push(n);});
+function padColor(name,side,idx){
+  if(side==='L'&&used[idx])return {fill:'#fff',stroke:used[idx][0].color,sw:3};
+  if(FORBID[name])return {fill:'#ffcdd2',stroke:'#e57373',sw:1.5};
+  if(CAUTION[name])return {fill:'#fff3cd',stroke:'#e0b84c',sw:1.5};
+  return {fill:'#f2f2f2',stroke:'#9e9e9e',sw:1};
+}
+function drawHeader(names,side){
+  names.forEach((name,i)=>{
+    const y=Y0+i*PITCH, x=side==='L'?BX:BX+BW;
+    const c=padColor(name,side,i);
+    add(g,'circle',{cx:x,cy:y,r:7,fill:c.fill,stroke:c.stroke,'stroke-width':c.sw});
+    const label=(/^\d+$/.test(name)?'GPIO'+name:name);
+    const tx=side==='L'?x+14:x-14, anchor=side==='L'?'start':'end';
+    const bold=(side==='L'&&used[i])?700:500;
+    add(g,'text',{x:tx,y:y+4,'font-size':11,'font-weight':bold,fill:'#fff','text-anchor':anchor},label);
+    const tag=FORBID[name]||CAUTION[name];
+    if(tag){
+      if(side==='L') add(g,'text',{x:x+72,y:y+4,'font-size':9.5,fill:FORBID[name]?'#ffcdd2':'#ffe082','text-anchor':'start'},tag);
+      else add(g,'text',{x:x+14,y:y+4,'font-size':9.5,fill:FORBID[name]?'#c62828':'#8d6e00','text-anchor':'start'},tag); // 보드 바깥(오른쪽 여백)
+    }
+  });
+}
+drawHeader(LEFT,'L');drawHeader(RIGHT,'R');
+
+/* ---- 모듈 ---- */
+const pinPos={};
+for(const key in MODS){
+  const m=MODS[key], gm=add(svg,'g',{});
+  add(gm,'rect',{x:m.x,y:m.y,width:m.w,height:m.h,rx:10,fill:'#263238',stroke:'#102027','stroke-width':2});
+  add(gm,'text',{x:m.x+14,y:m.y+26,'font-size':15,'font-weight':700,fill:'#fff'},m.title);
+  add(gm,'text',{x:m.x+14,y:m.y+44,'font-size':11,fill:'#b0bec5'},m.sub);
+  if(key==='gps'){ // 세라믹 안테나
+    add(gm,'rect',{x:m.x+20,y:m.y+70,width:70,height:70,fill:'#d7ccc8',stroke:'#8d6e63','stroke-width':2});
+    add(gm,'circle',{cx:m.x+55,cy:m.y+105,r:4,fill:'#8d6e63'});
+    add(gm,'text',{x:m.x+55,y:m.y+160,'font-size':10,fill:'#b0bec5','text-anchor':'middle'},'세라믹 안테나 ↑하늘');
+  }else{ // 칩
+    add(gm,'rect',{x:m.x+28,y:m.y+90,width:44,height:44,fill:'#111',stroke:'#555'});
+    add(gm,'circle',{cx:m.x+34,cy:m.y+96,r:2.5,fill:'#888'});
+  }
+  add(gm,'text',{x:m.x+14,y:m.y+m.h-12,'font-size':10,fill:'#90a4ae'},m.note);
+  const py0=m.y+70;
+  m.pins.forEach((p,i)=>{
+    const y=py0+i*30, x=m.x+m.w;
+    const net=NETS.find(n=>n.mod===key&&n.pin===p);
+    add(gm,'circle',{cx:x,cy:y,r:6,fill:net?'#fff':'#455a64',stroke:net?net.color:'#78909c','stroke-width':net?3:1.5});
+    add(gm,'text',{x:x-14,y:y+4,'font-size':11.5,'font-weight':net?700:400,fill:net?'#fff':'#90a4ae','text-anchor':'end'},p);
+    pinPos[key+':'+p]=[x,y];
+  });
+}
+
+/* ---- 배선 (모듈 오른쪽 → 보드 왼쪽 헤더) ---- */
+const wires=add(svg,'g',{fill:'none','stroke-linecap':'round'});
+NETS.forEach(n=>{
+  const [x1,y1]=pinPos[n.mod+':'+n.pin], x2=BX-7, y2=Y0+n.idx*PITCH;
+  const d=`M${x1+6},${y1} C${x1+130},${y1} ${x2-130},${y2} ${x2},${y2}`;
+  add(wires,'path',{d,stroke:'#fff','stroke-width':6,opacity:.9});
+  add(wires,'path',{d,stroke:n.color,'stroke-width':3});
+});
+// 교차 표시
+const halo={'font-size':11,fill:'#5f6670','text-anchor':'middle',stroke:'#fff','stroke-width':4,'paint-order':'stroke'};
+add(svg,'text',Object.assign({x:470,y:408},halo),'TX ↔ RX 교차');
+add(svg,'text',Object.assign({x:470,y:424},halo),'GPS TXD → GPIO18 · GPS RXD ← GPIO17');
+})();
+</script>
+</body>
+</html>

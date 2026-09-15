@@ -97,6 +97,10 @@ WiFi 없이 BLE만으로 같은 화면을 볼 수 있다. 페이지 원본은 `d
    - 임시 테스트: Android Chrome `chrome://flags/#unsafely-treat-insecure-origin-as-secure`에
      `http://192.168.0.72`(ESP IP)를 넣고 Enabled → ESP가 서빙하는 http 페이지에서도 BLE 버튼이 동작한다.
 2. 페이지의 **BLE 연결** 버튼 → 기기 선택창에서 `FootTrack` 선택.
+   - **"Web Bluetooth API globally disabled"** 가 뜨면 Chrome이 아닌 브라우저로 열린 것이다.
+     카카오톡·네이버 앱의 인앱 브라우저, 웨일, Brave, Edge, Opera, Firefox는 Web Bluetooth를 막아 둔다.
+     페이지의 "Chrome으로 열기"를 누르거나 주소를 복사해 **Chrome 앱**에서 연다. 삼성 인터넷은 v6.4 이상이면 된다.
+   - Chrome인데도 안 되면: Android 6 이상, 블루투스 켜짐, `chrome://flags/#enable-web-bluetooth` 가 Default/Enabled 인지 확인.
 3. 연결되면 저장된 동선이 먼저 재생되고, 이후 FIX 10Hz / STATS 1Hz로 갱신된다. 리셋·GPX도 BLE로 동작한다.
 4. 배터리로 뛸 때는 `config.h`의 `ENABLE_WIFI`를 0으로 → WiFi 꺼지고 소비전류가 크게 준다.
 

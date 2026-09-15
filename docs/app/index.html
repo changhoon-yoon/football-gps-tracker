@@ -147,7 +147,18 @@ async function bleConnect(){
     if(es){es.close();es=null;}
     $('st').innerHTML='<b class="ok">BLE</b> 연결됨 · 데이터 대기';
     keepAwake();
-  }catch(err){bleOn=false;$('ble').textContent='BLE 연결';$('ble').classList.remove('on');$('st').innerHTML='<b class="bad">● BLE 실패</b> '+(err&&err.message||err);}
+  }catch(err){bleOn=false;$('ble').textContent='BLE 연결';$('ble').classList.remove('on');$('st').innerHTML=bleErrorHtml(err);}
+}
+// 브라우저가 Web Bluetooth를 막아둔 경우(인앱 브라우저·웨일·Brave·Edge·Opera 등) 안내 + Chrome으로 여는 인텐트 링크
+function chromeIntent(){return 'intent://'+location.host+location.pathname+location.search+'#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url='+encodeURIComponent(location.href)+';end';}
+function bleErrorHtml(err){
+  const m=(err&&err.message)||String(err);
+  if(/globally disabled|not supported|NotSupported/i.test(m))
+    return '<b class="bad">● 이 브라우저는 Web Bluetooth를 막아둠</b> (카톡·네이버 인앱, 웨일, Brave, Edge 등)<br>'
+      +'<a href="'+chromeIntent()+'" style="color:#8ab4ff;font-weight:600">▶ Chrome으로 열기</a> 또는 주소를 복사해 Chrome에 붙여넣기';
+  if(/User cancelled|cancelled/i.test(m)) return '<b class="warn">● 기기 선택 취소됨</b> 다시 BLE 연결을 누르세요';
+  if(/adapter|Bluetooth.*(off|unavailable)/i.test(m)) return '<b class="bad">● 블루투스가 꺼져 있음</b> 폰 블루투스를 켜고 다시 시도';
+  return '<b class="bad">● BLE 실패</b> '+m;
 }
 function onFix(v){
   if(v.byteLength<20)return;
@@ -179,7 +190,8 @@ function gpxText(){
 initMap();
 if(hasBle){$('ble').hidden=false;$('ble').onclick=bleConnect;}
 if(viaHttp){loadTrack().catch(()=>{}).then(connectSse);}
-else{$('st').innerHTML=hasBle?'<b class="warn">BLE 연결</b> 버튼을 눌러 FootTrack에 연결하세요':'<b class="bad">이 브라우저는 Web Bluetooth 미지원</b> Android Chrome을 쓰세요';}
+else{$('st').innerHTML=hasBle?'<b class="warn">BLE 연결</b> 버튼을 눌러 FootTrack에 연결하세요'
+  :'<b class="bad">이 브라우저는 Web Bluetooth 미지원</b> <a href="'+chromeIntent()+'" style="color:#8ab4ff;font-weight:600">▶ Chrome으로 열기</a>';}
 $('follow').onclick=()=>setFollow(!follow);
 $('reset').onclick=()=>{
   if(!confirm('기록을 초기화할까요?'))return;

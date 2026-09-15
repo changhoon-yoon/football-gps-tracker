@@ -86,6 +86,26 @@ Android는 mDNS(`.local`)를 브라우저에서 못 푸는 경우가 많으니 I
 
 임계값은 전부 `include/config.h`.
 
+## BLE로 보기 (Android Chrome, Web Bluetooth)
+
+WiFi 없이 BLE만으로 같은 화면을 볼 수 있다. 페이지 원본은 `docs/app/index.html` 하나이고,
+빌드 때 `tools/embed_page.py`가 펌웨어에도 내장하므로 WiFi 경로와 BLE 경로가 항상 같은 화면이다.
+
+1. **페이지를 https로 연다.** Web Bluetooth는 https(또는 localhost)에서만 동작한다.
+   GitHub Pages(저장소 Settings → Pages → Branch main, 폴더 `/docs`)에 올리면
+   `https://<계정>.github.io/<저장소>/app/` 로 열린다. 홈 화면에 추가해 두면 앱처럼 쓴다.
+   - 임시 테스트: Android Chrome `chrome://flags/#unsafely-treat-insecure-origin-as-secure`에
+     `http://192.168.0.72`(ESP IP)를 넣고 Enabled → ESP가 서빙하는 http 페이지에서도 BLE 버튼이 동작한다.
+2. 페이지의 **BLE 연결** 버튼 → 기기 선택창에서 `FootTrack` 선택.
+3. 연결되면 저장된 동선이 먼저 재생되고, 이후 FIX 10Hz / STATS 1Hz로 갱신된다. 리셋·GPX도 BLE로 동작한다.
+4. 배터리로 뛸 때는 `config.h`의 `ENABLE_WIFI`를 0으로 → WiFi 꺼지고 소비전류가 크게 준다.
+
+GATT 규격(UUID, 프레임 바이트 배치)은 `src/ble_link.h` 상단 주석. 서비스 `f007ba11-0000-4c45-8000-000000000000`,
+FIX `…0001`(20B notify), STATS `…0002`(20B notify), HIST `…0003`(8B/점 notify, 끝 마커 lat=0x7FFFFFFF), CTRL `…0004`(write: 1=리셋, 2=이력).
+
+제약: iOS Safari는 Web Bluetooth 미지원(Bluefy 앱 필요). 화면이 꺼지면 연결이 끊길 수 있어 페이지가 Wake Lock으로 화면을 켜 둔다.
+WiFi와 BLE를 같이 켜면 WiFi 모뎀 슬립이 강제되어 SSE 지연이 수십 ms 늘어난다.
+
 ## HTTP 엔드포인트
 
 | 경로 | 설명 |

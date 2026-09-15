@@ -3,6 +3,12 @@
 // ============================================================
 #pragma once
 
+// ---- 무선 선택 ----
+//  ENABLE_WIFI 1 + ENABLE_BLE 1 : 둘 다 (책상 테스트). BLE만 쓰면 WiFi를 0으로 → 배터리 2~3배
+#define ENABLE_WIFI     1
+#define ENABLE_BLE      1
+#define BLE_NAME        "FootTrack"       // 폰 Web Bluetooth 기기 선택창에 보이는 이름
+
 // ---- 네트워크 ----
 #define HOSTNAME        "foottrack"       // mDNS: http://foottrack.local (iOS OK, Android은 IP로)
 #define AP_SSID         "FootTrack"       // 핫스팟 접속 실패 시 자체 AP → http://192.168.4.1

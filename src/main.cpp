@@ -26,6 +26,7 @@
 #include "track.h"
 #include "imu_icm42688.h"
 #include "web_page.h"
+#include "ble_link.h"
 
 #if __has_include("wifi_secrets.h")
   #include "wifi_secrets.h"
@@ -259,6 +260,38 @@ static void pushStatus(bool stored) {
     S.player_load, imu.ok(), stored, (unsigned)track.count());
   if (events.count() > 0) events.send(g_json, "fix", now);
   g_last_push_ms = now;
+
+#if ENABLE_BLE
+  // 같은 내용을 BLE 바이너리 프레임으로 (규격: ble_link.h). FIX는 매 호출, STATS는 1Hz
+  if (bleConnected()) {
+    const float kmh = S.fix ? S.kmh : 0.0f;
+    const int z = kmh < ZONE_KMH_1 ? 0 : kmh < ZONE_KMH_2 ? 1 : kmh < ZONE_KMH_3 ? 2 : kmh < ZONE_KMH_4 ? 3 : 4;
+    uint8_t f[20];
+    f[0] = (S.fix ? 1 : 0) | (gpsAlive ? 2 : 0) | (imu.ok() ? 4 : 0) | (stored ? 8 : 0) | (S.started ? 16 : 0);
+    f[1] = clampU8((float)gps.satellites.value());
+    f[2] = clampU8((gps.hdop.isValid() ? (float)gps.hdop.hdop() : 25.5f) * 10.0f);
+    f[3] = (uint8_t)z;
+    putU32(f + 4,  (uint32_t)(int32_t)lround(S.lat * 1e7));
+    putU32(f + 8,  (uint32_t)(int32_t)lround(S.lon * 1e7));
+    putU16(f + 12, clampU16(kmh / 0.036f));           // km/h → cm/s
+    putU16(f + 14, clampU16(S.course * 10.0f));
+    putU32(f + 16, (uint32_t)(S.dist_m * 100.0f));    // m → cm
+    bleNotifyFix(f, sizeof f);
+
+    static uint32_t last_stats_ms = 0;
+    if (now - last_stats_ms >= 1000) {
+      last_stats_ms = now;
+      uint8_t s[20];
+      putU16(s + 0, clampU16(S.max_kmh * 10.0f));
+      putU16(s + 2, clampU16((float)el));
+      for (int i = 0; i < 5; i++) putU16(s + 4 + i * 2, clampU16(S.zone_m[i]));
+      putU16(s + 14, S.sprints);
+      putU16(s + 16, clampU16(S.player_load * 10.0f));
+      putU16(s + 18, clampU16((float)track.count()));
+      bleNotifyStats(s, sizeof s);
+    }
+  }
+#endif
 }
 
 // IMU 100Hz 샘플링 → PlayerLoad (Catapult 정의: Σ√(Δax²+Δay²+Δaz²)/100, 단위 g)
@@ -415,7 +448,11 @@ static void wifiSetup() {
     WiFi.softAP(AP_SSID, AP_PASS);
     Serial.printf("[WiFi] AP 모드  SSID=%s  PW=%s  →  http://%s/\n", AP_SSID, AP_PASS, WiFi.softAPIP().toString().c_str());
   }
+#if ENABLE_BLE
+  WiFi.setSleep(true);                          // BLE 공존 시 모뎀 슬립 필수 (끄면 IDF가 abort) — SSE 지연 수십 ms 추가
+#else
   WiFi.setSleep(false);                         // 실시간 SSE 지연 최소화 (전류 +수십 mA)
+#endif
   if (MDNS.begin(HOSTNAME)) MDNS.addService("http", "tcp", 80);
 }
 
@@ -434,8 +471,16 @@ void setup() {
   if (imu.begin(PIN_IMU_SCK, PIN_IMU_MISO, PIN_IMU_MOSI, PIN_IMU_CS)) Serial.println("[IMU] ICM-42688-P OK (±16g/±2000dps, 100Hz)");
   else Serial.println("[IMU] 감지 실패 — GPS만으로 동작 (PlayerLoad 없음)");
 
+#if ENABLE_BLE
+  bleSetup(BLE_NAME, &track, resetSession);
+#endif
+#if ENABLE_WIFI
   wifiSetup();
   webSetup();
+#else
+  WiFi.mode(WIFI_OFF);
+  Serial.println("[WiFi] 비활성 (ENABLE_WIFI=0, BLE 전용)");
+#endif
   pushStatus(false);
 }
 
@@ -456,6 +501,9 @@ void loop() {
   if (gps.speed.isUpdated()) onGpsTick();
   // 3) IMU 100Hz
   imuTask();
+#if ENABLE_BLE
+  bleLoop();                                         // 리셋 명령 처리, 이력 재생 진행
+#endif
   // 4) fix 없어도 1Hz 하트비트 (위성 수/HDOP/GPS 무응답 표시용)
   if (millis() - g_last_push_ms >= 1000) { S.fix = false; pushStatus(false); }
   // 5) GPS를 못 찾았고 여전히 조용하면 15초마다 재탐색 (배선을 나중에 꽂아도 잡힘)
@@ -472,10 +520,16 @@ void loop() {
   static uint32_t last_log = 0;
   if (millis() - last_log >= 5000) {
     last_log = millis();
-    Serial.printf("[LOG] gps=%s fix=%d sat=%u hdop=%.1f spd=%.1fkm/h dist=%.0fm pts=%u sse=%u heap=%u chars=%lu bad=%lu nmea=%lu\n",
+    Serial.printf("[LOG] gps=%s fix=%d sat=%u hdop=%.1f spd=%.1fkm/h dist=%.0fm pts=%u sse=%u ble=%d/mtu%u heap=%u chars=%lu bad=%lu nmea=%lu\n",
                   (millis() - g_last_gps_byte_ms) < 3000 ? "ok" : "NONE", S.fix,
                   (unsigned)gps.satellites.value(), gps.hdop.isValid() ? gps.hdop.hdop() : 99.9, S.kmh, S.dist_m,
-                  (unsigned)track.count(), (unsigned)events.count(), (unsigned)ESP.getFreeHeap(),
+                  (unsigned)track.count(), (unsigned)events.count(),
+#if ENABLE_BLE
+                  bleConnected(), (unsigned)bleMtu(),
+#else
+                  0, 0u,
+#endif
+                  (unsigned)ESP.getFreeHeap(),
                   (unsigned long)gps.charsProcessed(), (unsigned long)gps.failedChecksum(), (unsigned long)g_nmea_count);
     if (g_nmea_line[0]) Serial.printf("      last: %s\n", g_nmea_line);
   }

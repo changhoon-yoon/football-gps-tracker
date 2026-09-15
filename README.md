@@ -92,8 +92,8 @@ WiFi 없이 BLE만으로 같은 화면을 볼 수 있다. 페이지 원본은 `d
 빌드 때 `tools/embed_page.py`가 펌웨어에도 내장하므로 WiFi 경로와 BLE 경로가 항상 같은 화면이다.
 
 1. **페이지를 https로 연다.** Web Bluetooth는 https(또는 localhost)에서만 동작한다.
-   GitHub Pages(저장소 Settings → Pages → Branch main, 폴더 `/docs`)에 올리면
-   `https://<계정>.github.io/<저장소>/app/` 로 열린다. 홈 화면에 추가해 두면 앱처럼 쓴다.
+   배포된 주소: **https://changhoon-yoon.github.io/football-gps-tracker/app/** (GitHub Pages, `/docs` 폴더).
+   홈 화면에 추가해 두면 앱처럼 쓴다. 저장소: https://github.com/changhoon-yoon/football-gps-tracker
    - 임시 테스트: Android Chrome `chrome://flags/#unsafely-treat-insecure-origin-as-secure`에
      `http://192.168.0.72`(ESP IP)를 넣고 Enabled → ESP가 서빙하는 http 페이지에서도 BLE 버튼이 동작한다.
 2. 페이지의 **BLE 연결** 버튼 → 기기 선택창에서 `FootTrack` 선택.

@@ -32,9 +32,33 @@ button,a.btn{flex:1 1 0;min-width:0;padding:9px 0;border:0;border-radius:8px;bac
 #ble{background:#7c3aed}
 #ble.on{background:#1f9d55}
 [hidden]{display:none!important}
+/* GPS 상세 패널 */
+#st{cursor:pointer}
+#st .tg{float:right;color:#9aa;font-weight:600;margin-left:8px}
+#gp{position:absolute;top:46px;left:8px;right:8px;z-index:1000;background:rgba(16,18,22,.95);border-radius:8px;padding:8px 10px;font-size:12px;max-height:50vh;overflow:auto;display:none}
+#gp.open{display:block}
+.kv{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:3px 8px;align-items:baseline}
+.kv b{color:#9aa;font-weight:500;font-size:11px}
+.kv span{font-family:ui-monospace,Consolas,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#nmea{font:10.5px/1.3 ui-monospace,Consolas,monospace;color:#8fd3a0;word-break:break-all;margin-top:6px}
+#feed{font:11px/1.35 ui-monospace,Consolas,monospace;white-space:pre;margin:6px 0 0;color:#cfd8dc;height:22vh;overflow:auto;background:#0d1013;border-radius:6px;padding:6px}
+.gpb{display:flex;gap:6px;margin-top:8px}
+.gpb button,.gpb a.btn{padding:6px 2px;font-size:12px}
 </style></head><body>
 <div id="map"></div><canvas id="local"></canvas>
 <div id="st">연결 중…</div>
+<div id="gp">
+ <div class="kv">
+  <b>위도</b><span id="g_lat">-</span><b>경도</b><span id="g_lon">-</span>
+  <b>고도</b><span id="g_alt">-</span><b>속도</b><span id="g_spd">-</span>
+  <b>방향</b><span id="g_crs">-</span><b>위성</b><span id="g_sat">-</span>
+  <b>HDOP</b><span id="g_hdop">-</span><b>UTC</b><span id="g_utc">-</span>
+  <b>수신</b><span id="g_hz">-</span><b>경로</b><span id="g_src">-</span>
+ </div>
+ <div id="nmea"></div>
+ <pre id="feed"></pre>
+ <div class="gpb"><button class="sec" id="g_copy">좌표 복사</button><a class="btn sec" id="g_map" href="#" target="_blank" rel="noopener">지도앱</a><button class="sec" id="g_clear">피드 지우기</button></div>
+</div>
 <div id="hud">
  <div class="tiles">
   <div class="tile"><div class="l">이동거리</div><div class="v"><span id="dist">0</span><span class="u" id="du">m</span></div></div>
@@ -59,7 +83,7 @@ const hasL=!!window.L;
 const viaHttp=location.protocol==='http:';            // ESP32가 서빙 → SSE 사용 가능
 const hasBle=!!(navigator.bluetooth);                  // Android Chrome 등 Web Bluetooth
 let pts=[],map=null,line=null,marker=null,follow=true,centered=false,last=null,dropped=false,es=null;
-let stats={max:0,el:0,z:[0,0,0,0,0],spr:0,pl:0,n:0};   // BLE STATS(1Hz) 보관 → FIX(10Hz)와 합쳐 update()
+let stats={max:0,el:0,z:[0,0,0,0,0],spr:0,pl:0,n:0,alt:null};   // BLE STATS(1Hz) 보관 → FIX(10Hz)와 합쳐 update()
 const pad=n=>(n<10?'0':'')+n;
 const fmtEl=s=>pad(Math.floor(s/60))+':'+pad(s%60);
 
@@ -109,11 +133,38 @@ function update(d){
   else if(d.fix)s+='<b class="ok">● FIX</b> · 위성 '+d.sat+' · HDOP '+d.hdop.toFixed(1)+' · 점 '+d.n;
   else s+='<b class="warn">● 위성 탐색 중</b> · 보이는 위성 '+(d.siv||0)+'개'+((d.siv||0)<4?' · 하늘이 보이는 실외로 (첫 fix 1~2분)':' · 곧 잡힘');
   if(d.imu)s+=' · PL '+d.pl.toFixed(0);
+  s+='<span class="tg">GPS '+(gpOpen?'▴':'▾')+'</span>';
   $('st').innerHTML=s;
+  gpsPanel(d);
   if(d.fix){const p=[d.lat,d.lon];last=p;if(d.pt)addPt(p);
     if(hasL){marker.setLatLng(p);if(!centered){map.setView(p,17);centered=true;}else if(follow)map.panTo(p,{animate:false});}
     else drawLocal(p);}
 }
+
+/* ---- GPS 상세 패널 (상태줄을 탭하면 열림): 좌표 10Hz 피드, 수신율, 원시 NMEA ---- */
+let gpOpen=false,rx=[],feedN=0;
+const fmtT=()=>{const t=new Date();return pad(t.getHours())+':'+pad(t.getMinutes())+':'+pad(t.getSeconds())+'.'+Math.floor(t.getMilliseconds()/100);};
+function gpsPanel(d){
+  const now=performance.now();rx.push(now);while(rx.length&&now-rx[0]>2000)rx.shift();
+  const fix=!!d.fix;
+  $('g_lat').textContent=fix?d.lat.toFixed(7):'-';$('g_lon').textContent=fix?d.lon.toFixed(7):'-';
+  $('g_alt').textContent=fix&&d.alt!=null?d.alt.toFixed(1)+' m':'-';
+  $('g_spd').textContent=fix?d.spd.toFixed(1)+' km/h':'-';$('g_crs').textContent=fix?Math.round(d.crs)+'°':'-';
+  $('g_sat').textContent=d.sat+' 사용 / '+(d.siv||0)+' 보임';$('g_hdop').textContent=d.hdop.toFixed(1);
+  $('g_utc').textContent=d.utc||'-';$('g_hz').textContent=(rx.length/2).toFixed(1)+' Hz';$('g_src').textContent=bleOn?'BLE':'WiFi SSE';
+  if(d.nmea)$('nmea').textContent=d.nmea;
+  const line=(d.utc||fmtT())+(fix?'  '+d.lat.toFixed(7)+'  '+d.lon.toFixed(7)+'  '+d.spd.toFixed(1).padStart(5)+'km/h  '+String(Math.round(d.crs)).padStart(3)+'°'
+                              :'  fix 없음 · 보이는 위성 '+(d.siv||0));
+  const f=$('feed');f.textContent+=(feedN++?'\n':'')+line;
+  if(feedN>60){f.textContent=f.textContent.split('\n').slice(-60).join('\n');feedN=60;}
+  if(gpOpen)f.scrollTop=f.scrollHeight;
+}
+$('st').onclick=()=>{gpOpen=!gpOpen;$('gp').classList.toggle('open',gpOpen);if(gpOpen){const f=$('feed');f.scrollTop=f.scrollHeight;}};
+$('g_clear').onclick=()=>{$('feed').textContent='';feedN=0;};
+$('g_copy').onclick=()=>{if(!last)return;const t=last[0].toFixed(7)+','+last[1].toFixed(7);
+  (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>{$('g_copy').textContent='복사됨';setTimeout(()=>$('g_copy').textContent='좌표 복사',1200);}).catch(()=>prompt('좌표',t));};
+$('g_map').onclick=e=>{if(!last){e.preventDefault();return;}const q=last[0].toFixed(7)+','+last[1].toFixed(7);
+  e.currentTarget.href=/Android/i.test(navigator.userAgent)?'geo:'+q+'?q='+q:'https://www.google.com/maps?q='+q;};
 
 /* ---- WiFi 경로: SSE ---- */
 function loadTrack(){return fetch('/track',{cache:'no-store'}).then(r=>r.json()).then(j=>setPts(j.pts.map(p=>[p[0],p[1]])));}
@@ -169,12 +220,12 @@ function onFix(v){
     sat:v.getUint8(1),hdop:v.getUint8(2)/10,siv:v.getUint8(3)>>3,
     lat:v.getInt32(4,true)/1e7,lon:v.getInt32(8,true)/1e7,
     spd:v.getUint16(12,true)*0.036,crs:v.getUint16(14,true)/10,dist:v.getUint32(16,true)/100,
-    max:stats.max,el:stats.el,z:stats.z,spr:stats.spr,pl:stats.pl,n:stats.n});
+    max:stats.max,el:stats.el,z:stats.z,spr:stats.spr,pl:stats.pl,n:stats.n,alt:stats.alt});
 }
 function onStats(v){
   if(v.byteLength<20)return;
   stats={max:v.getUint16(0,true)/10,el:v.getUint16(2,true),z:[0,1,2,3,4].map(i=>v.getUint16(4+i*2,true)),
-    spr:v.getUint16(14,true),pl:v.getUint16(16,true)/10,n:v.getUint16(18,true)};
+    spr:v.getUint16(14,true),pl:v.getUint16(16,true)/10,n:v.getUint16(18,true),alt:v.byteLength>=22?v.getInt16(20,true):null};
 }
 function onHist(v){
   for(let o=0;o+8<=v.byteLength;o+=8){

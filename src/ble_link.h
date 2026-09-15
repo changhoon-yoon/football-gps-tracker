@@ -3,7 +3,7 @@
 //
 //  서비스  f007ba11-0000-4c45-8000-000000000000
 //   FIX    ...-0001  notify 10Hz, 20B  (아래 프레임 규격)
-//   STATS  ...-0002  notify 1Hz,  20B
+//   STATS  ...-0002  notify 1Hz,  22B
 //   HIST   ...-0003  notify, 저장 동선 재생: 점당 8B(lat_e7,lon_e7) × N, 끝 마커 = lat 0x7FFFFFFF + 총점수
 //   CTRL   ...-0004  write 1B: 0x01 리셋, 0x02 이력 재요청
 //
@@ -17,8 +17,8 @@
 //   12 u16 speed cm/s
 //   14 u16 course ×10
 //   16 u32 dist cm
-//  STATS (20B)
-//   0  u16 max km/h ×10   2 u16 elapsed s   4..13 u16 zone[5] m   14 u16 sprints   16 u16 PL×10   18 u16 points
+//  STATS (22B)
+//   0  u16 max km/h ×10   2 u16 elapsed s   4..13 u16 zone[5] m   14 u16 sprints   16 u16 PL×10   18 u16 points   20 i16 고도 m
 // ============================================================
 #pragma once
 #include <Arduino.h>

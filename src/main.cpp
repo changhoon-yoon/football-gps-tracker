@@ -76,7 +76,7 @@ static char     g_nmea_buf[96];
 static uint8_t  g_nmea_len = 0;
 static uint32_t g_nmea_count = 0;
 static uint32_t g_last_push_ms = 0;
-static char     g_json[420];
+static char     g_json[600];
 
 // ============================================================
 //  GPS (ATGM336H, CASIC PCAS 명령)
@@ -260,15 +260,19 @@ static void pushStatus(bool stored) {
   const uint32_t now = millis();
   const uint32_t el  = S.started ? (now - S.start_ms) / 1000 : 0;
   const bool gpsAlive = g_last_gps_byte_ms && (now - g_last_gps_byte_ms) < 3000;
+  char utc[16] = "";
+  if (gps.time.isValid() && gps.time.age() < 2000)
+    snprintf(utc, sizeof utc, "%02u:%02u:%02u.%u", gps.time.hour(), gps.time.minute(), gps.time.second(), gps.time.centisecond() / 10);
+  const float alt = (S.fix && gps.altitude.isValid()) ? (float)gps.altitude.meters() : 0.0f;
   snprintf(g_json, sizeof g_json,
-    "{\"fix\":%d,\"gps\":%d,\"sat\":%u,\"siv\":%u,\"hdop\":%.1f,\"lat\":%.7f,\"lon\":%.7f,\"spd\":%.1f,\"crs\":%.0f,"
-    "\"dist\":%.1f,\"max\":%.1f,\"el\":%u,\"z\":[%.0f,%.0f,%.0f,%.0f,%.0f],\"spr\":%u,"
-    "\"pl\":%.1f,\"imu\":%d,\"pt\":%d,\"n\":%u}",
+    "{\"fix\":%d,\"gps\":%d,\"sat\":%u,\"siv\":%u,\"hdop\":%.1f,\"lat\":%.7f,\"lon\":%.7f,\"alt\":%.1f,\"spd\":%.1f,\"crs\":%.0f,"
+    "\"utc\":\"%s\",\"dist\":%.1f,\"max\":%.1f,\"el\":%u,\"z\":[%.0f,%.0f,%.0f,%.0f,%.0f],\"spr\":%u,"
+    "\"pl\":%.1f,\"imu\":%d,\"pt\":%d,\"n\":%u,\"nmea\":\"%s\"}",
     S.fix, gpsAlive, (unsigned)gps.satellites.value(), (unsigned)satsInView(), gps.hdop.isValid() ? gps.hdop.hdop() : 99.9,
-    S.lat, S.lon, S.fix ? S.kmh : 0.0f, S.course,
+    S.lat, S.lon, alt, S.fix ? S.kmh : 0.0f, S.course, utc,
     S.dist_m, S.max_kmh, (unsigned)el,
     S.zone_m[0], S.zone_m[1], S.zone_m[2], S.zone_m[3], S.zone_m[4], S.sprints,
-    S.player_load, imu.ok(), stored, (unsigned)track.count());
+    S.player_load, imu.ok(), stored, (unsigned)track.count(), g_nmea_line);   // NMEA는 따옴표·백슬래시가 없어 JSON에 그대로 안전
   if (events.count() > 0) events.send(g_json, "fix", now);
   g_last_push_ms = now;
 
@@ -293,13 +297,14 @@ static void pushStatus(bool stored) {
     static uint32_t last_stats_ms = 0;
     if (now - last_stats_ms >= 1000) {
       last_stats_ms = now;
-      uint8_t s[20];
+      uint8_t s[22];
       putU16(s + 0, clampU16(S.max_kmh * 10.0f));
       putU16(s + 2, clampU16((float)el));
       for (int i = 0; i < 5; i++) putU16(s + 4 + i * 2, clampU16(S.zone_m[i]));
       putU16(s + 14, S.sprints);
       putU16(s + 16, clampU16(S.player_load * 10.0f));
       putU16(s + 18, clampU16((float)track.count()));
+      putU16(s + 20, (uint16_t)(int16_t)alt);          // 고도 m (부호 있음)
       bleNotifyStats(s, sizeof s);
     }
   }

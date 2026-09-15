@@ -18,6 +18,7 @@
 // ---- GPS ----
 #define GPS_BAUD_INIT   9600              // ATGM336H 공장 기본
 #define GPS_BAUD_RUN    115200            // 10Hz × (GGA+RMC)는 9600으로 부족
+#define GPS_NAV_MODE    2                 // PCAS11 항법 모드: 0 휴대, 1 정지, 2 보행자, 3 차량(공장값, 저속을 0으로 눌러 걷기 거리 누락)
 #define GPS_MIN_SATS    4
 #define GPS_MAX_HDOP    6.0f
 #define GPS_MAX_AGE_MS  1500

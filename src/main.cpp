@@ -124,6 +124,9 @@ static void gpsConfigure(uint32_t currentBaud) {
   }
   gpsSend("PCAS03,1,0,0,1,1,0,0,0,0,0,,,0,0");  // GGA=1, GSV=1(보이는 위성 수), RMC=1, 나머지 0
   gpsSend("PCAS02,100");                        // 100ms 주기 = 10Hz (최대)
+  char nav[16]; snprintf(nav, sizeof nav, "PCAS11,%d", GPS_NAV_MODE);
+  gpsSend(nav);                                 // 항법 모드 (차량 모드의 저속 정지 필터가 걷기 속도를 0으로 만드는 문제 회피)
+  Serial.printf("[GPS] 항법 모드 %d (0휴대 1정지 2보행 3차량)\n", GPS_NAV_MODE);
 }
 
 // 배선 TX/RX 뒤바뀜과 보레이트 잔존(전원 유지 시 115200)을 자동 감지. 최대 약 5초.
@@ -218,10 +221,10 @@ static void onGpsTick() {
     if (dt > MAX_GAP_S) dt = 0;                              // 긴 공백은 적분 제외
 
     const float d   = v * dt;
-    const float kmh = v * 3.6f;
+    const float kmh = v * 3.6f;                              // 임계값 적용 후 (지표 계산용)
     S.lat = gps.location.lat();
     S.lon = gps.location.lng();
-    S.kmh = kmh;
+    S.kmh = v_raw * 3.6f;                                    // 화면 표시는 모듈 원시 속도 (정지 필터 진단용)
     S.course = gps.course.deg();
     S.dist_m += d;
     if (kmh > S.max_kmh) S.max_kmh = kmh;

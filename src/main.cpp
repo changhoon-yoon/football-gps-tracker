@@ -140,6 +140,15 @@ static bool gpsProbe() {
     }
   }
   Serial.println("[GPS] 신호 없음 — GPIO18/17 양쪽, 9600/115200 모두 조용함. 모듈 VCC/GND/TXD 확인 (15초 후 재시도)");
+  // 라인 상태 진단: 살아있는 UART TX는 idle HIGH를 스스로 유지한다.
+  //  PD/PU 양쪽 모두 HIGH = 모듈이 구동(정상 TXD) / 양쪽 LOW = LOW로 눌림 / PD:LOW·PU:HIGH = 플로팅(미연결·모듈 정지)
+  for (int p = 0; p < 2; p++) {
+    pinMode(pins[p], INPUT_PULLDOWN); delay(5); const int pd = digitalRead(pins[p]);
+    pinMode(pins[p], INPUT_PULLUP);   delay(5); const int pu = digitalRead(pins[p]);
+    pinMode(pins[p], INPUT);
+    const char* verdict = (pd && pu) ? "구동 HIGH (살아있는 TXD 후보)" : (!pd && !pu) ? "LOW로 눌림" : "플로팅 (미연결 또는 모듈 정지)";
+    Serial.printf("[GPS]   GPIO%d 라인: PD=%d PU=%d → %s\n", pins[p], pd, pu, verdict);
+  }
   GpsSerial.setRxBufferSize(2048);
   GpsSerial.begin(GPS_BAUD_RUN, SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);
   return false;

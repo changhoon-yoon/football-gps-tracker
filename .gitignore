@@ -3,3 +3,5 @@
 include/wifi_secrets.h
 # tools/embed_page.py가 docs/app/index.html에서 생성하는 파일
 src/web_page.h
+# 다른 세션의 UI 목업 작업 폴더 — 저장소/배포에서 제외
+web/

@@ -6,6 +6,8 @@
 #pragma once
 
 // ---- ATGM336H GPS (UART1, 3.3V, 기본 9600bps → 부팅 시 115200/10Hz로 전환) ----
+//  부팅 시 두 핀·두 보레이트를 자동 탐색하므로 TX/RX가 뒤바뀌어도 동작한다(시리얼 로그에 표시).
+//  2026-09-15 실측: 현재 배선은 GPS TXD→GPIO17, RXD→GPIO18 (아래 정의와 반대, 자동 적용됨)
 #define PIN_GPS_RX    18   // ESP32 RX  <- GPS TXD
 #define PIN_GPS_TX    17   // ESP32 TX  -> GPS RXD
 #define GpsSerial     Serial1

@@ -67,6 +67,10 @@ static Session S;
 
 static bool     g_wifi_sta = false;
 static uint32_t g_last_gps_byte_ms = 0;
+static char     g_nmea_line[96];     // 진단용: 마지막 완성 NMEA 문장
+static char     g_nmea_buf[96];
+static uint8_t  g_nmea_len = 0;
+static uint32_t g_nmea_count = 0;
 static uint32_t g_last_push_ms = 0;
 static char     g_json[420];
 
@@ -81,17 +85,64 @@ static void gpsSend(const char* body) {
   delay(60);
 }
 
-static void gpsSetup() {
+static int  g_gps_rx = PIN_GPS_RX, g_gps_tx = PIN_GPS_TX;
+static bool g_gps_found = false;
+
+// rxPin에서만 듣고(TX 미할당 → 충돌 없음) NMEA 문장 머리('$'+대문자) 개수를 센다
+static uint32_t gpsListen(int rxPin, uint32_t baud, uint32_t ms) {
+  GpsSerial.end();
+  pinMode(PIN_GPS_RX, INPUT);
+  pinMode(PIN_GPS_TX, INPUT);
+  GpsSerial.begin(baud, SERIAL_8N1, rxPin, -1);
+  uint32_t nmea = 0; int prev = 0;
+  const uint32_t t0 = millis();
+  while (millis() - t0 < ms) {
+    while (GpsSerial.available()) {
+      const int c = GpsSerial.read();
+      if (prev == '$' && c >= 'A' && c <= 'Z') nmea++;
+      prev = c;
+    }
+    delay(2);
+  }
+  GpsSerial.end();
+  return nmea;
+}
+
+// 감지된 핀/보레이트로 열고 115200 / 10Hz / GGA+RMC 설정
+static void gpsConfigure(uint32_t currentBaud) {
   GpsSerial.setRxBufferSize(2048);
-  // 모듈이 공장값(9600)이든 이전 설정(115200)이든 모두 잡히도록 9600에서 먼저 전환 명령
-  GpsSerial.begin(GPS_BAUD_INIT, SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);
-  delay(100);
-  gpsSend("PCAS01,5");                          // 5 = 115200bps
-  GpsSerial.updateBaudRate(GPS_BAUD_RUN);
-  delay(100);
+  GpsSerial.begin(currentBaud, SERIAL_8N1, g_gps_rx, g_gps_tx);
+  delay(50);
+  if (currentBaud != GPS_BAUD_RUN) {
+    gpsSend("PCAS01,5");                        // 5 = 115200bps
+    GpsSerial.updateBaudRate(GPS_BAUD_RUN);
+    delay(100);
+  }
   gpsSend("PCAS03,1,0,0,0,1,0,0,0,0,0,,,0,0");  // GGA=1, RMC=1, 나머지 0
   gpsSend("PCAS02,100");                        // 100ms 주기 = 10Hz (최대)
-  Serial.printf("[GPS] UART1 RX=%d TX=%d, %d bps, 10Hz, GGA+RMC\n", PIN_GPS_RX, PIN_GPS_TX, GPS_BAUD_RUN);
+}
+
+// 배선 TX/RX 뒤바뀜과 보레이트 잔존(전원 유지 시 115200)을 자동 감지. 최대 약 5초.
+static bool gpsProbe() {
+  const int      pins[2]  = {PIN_GPS_RX, PIN_GPS_TX};
+  const uint32_t bauds[2] = {GPS_BAUD_RUN, GPS_BAUD_INIT};
+  for (int p = 0; p < 2; p++) {
+    for (int b = 0; b < 2; b++) {
+      const uint32_t n = gpsListen(pins[p], bauds[b], 1300);
+      if (n < 2) continue;
+      g_gps_rx = pins[p];
+      g_gps_tx = (pins[p] == PIN_GPS_RX) ? PIN_GPS_TX : PIN_GPS_RX;
+      Serial.printf("[GPS] 감지: GPIO%d에서 NMEA %lu문장 @%lu bps%s\n", g_gps_rx, (unsigned long)n,
+                    (unsigned long)bauds[b], p ? "  ※ pins.h와 TX/RX 반대 — 자동 적용" : "");
+      gpsConfigure(bauds[b]);
+      Serial.printf("[GPS] RX=GPIO%d TX=GPIO%d, %d bps, 10Hz, GGA+RMC\n", g_gps_rx, g_gps_tx, GPS_BAUD_RUN);
+      return true;
+    }
+  }
+  Serial.println("[GPS] 신호 없음 — GPIO18/17 양쪽, 9600/115200 모두 조용함. 모듈 VCC/GND/TXD 확인 (15초 후 재시도)");
+  GpsSerial.setRxBufferSize(2048);
+  GpsSerial.begin(GPS_BAUD_RUN, SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);
+  return false;
 }
 
 // Howard Hinnant days_from_civil — TZ 의존 없이 UTC epoch 계산
@@ -369,7 +420,7 @@ void setup() {
   if (!track.begin(TRACK_CAP_SRAM, TRACK_CAP_PSRAM)) Serial.println("[TRACK] 버퍼 할당 실패!");
   else Serial.printf("[TRACK] %u점 버퍼 (%s)\n", (unsigned)track.capacity(), track.inPsram() ? "PSRAM" : "SRAM");
 
-  gpsSetup();
+  g_gps_found = gpsProbe();
 
   if (imu.begin(PIN_IMU_SCK, PIN_IMU_MISO, PIN_IMU_MOSI, PIN_IMU_CS)) Serial.println("[IMU] ICM-42688-P OK (±16g/±2000dps, 100Hz)");
   else Serial.println("[IMU] 감지 실패 — GPS만으로 동작 (PlayerLoad 없음)");
@@ -383,7 +434,14 @@ void loop() {
   // 1) GPS 바이트 소비
   while (GpsSerial.available()) {
     g_last_gps_byte_ms = millis();
-    gps.encode((char)GpsSerial.read());
+    const char c = (char)GpsSerial.read();
+    gps.encode(c);
+    if (c == '$') g_nmea_len = 0;
+    if (c == '\n') {                                   // 문장 완성 → 진단용 보관
+      g_nmea_buf[g_nmea_len] = 0; memcpy(g_nmea_line, g_nmea_buf, sizeof g_nmea_line); g_nmea_count++; g_nmea_len = 0;
+    } else if (c >= 32 && g_nmea_len < sizeof g_nmea_buf - 1) {
+      g_nmea_buf[g_nmea_len++] = c;
+    }
   }
   // 2) fix 있는 RMC마다 틱 (TinyGPSPlus는 fix 없으면 speed를 commit하지 않음)
   if (gps.speed.isUpdated()) onGpsTick();
@@ -391,14 +449,25 @@ void loop() {
   imuTask();
   // 4) fix 없어도 1Hz 하트비트 (위성 수/HDOP/GPS 무응답 표시용)
   if (millis() - g_last_push_ms >= 1000) { S.fix = false; pushStatus(false); }
-  // 5) 시리얼 로그 5초
+  // 5) GPS를 못 찾았고 여전히 조용하면 15초마다 재탐색 (배선을 나중에 꽂아도 잡힘)
+  static uint32_t last_probe = 0;
+  const bool never_seen = g_last_gps_byte_ms == 0;
+  const bool stream_lost = g_gps_found && !never_seen && millis() - g_last_gps_byte_ms > 8000;
+  if ((!g_gps_found && never_seen && millis() - last_probe >= 15000) || (stream_lost && millis() - last_probe >= 15000)) {
+    if (stream_lost) Serial.printf("[GPS] 스트림 끊김 %lus → 재탐색\n", (unsigned long)((millis() - g_last_gps_byte_ms) / 1000));
+    last_probe = millis();
+    g_gps_found = gpsProbe();
+    if (g_gps_found) g_last_gps_byte_ms = millis();
+  }
+  // 6) 시리얼 로그 5초
   static uint32_t last_log = 0;
   if (millis() - last_log >= 5000) {
     last_log = millis();
-    Serial.printf("[LOG] gps=%s fix=%d sat=%u hdop=%.1f spd=%.1fkm/h dist=%.0fm pts=%u sse=%u heap=%u chars=%lu bad=%lu\n",
+    Serial.printf("[LOG] gps=%s fix=%d sat=%u hdop=%.1f spd=%.1fkm/h dist=%.0fm pts=%u sse=%u heap=%u chars=%lu bad=%lu nmea=%lu\n",
                   (millis() - g_last_gps_byte_ms) < 3000 ? "ok" : "NONE", S.fix,
                   (unsigned)gps.satellites.value(), gps.hdop.isValid() ? gps.hdop.hdop() : 99.9, S.kmh, S.dist_m,
                   (unsigned)track.count(), (unsigned)events.count(), (unsigned)ESP.getFreeHeap(),
-                  (unsigned long)gps.charsProcessed(), (unsigned long)gps.failedChecksum());
+                  (unsigned long)gps.charsProcessed(), (unsigned long)gps.failedChecksum(), (unsigned long)g_nmea_count);
+    if (g_nmea_line[0]) Serial.printf("      last: %s\n", g_nmea_line);
   }
 }

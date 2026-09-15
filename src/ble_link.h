@@ -11,7 +11,7 @@
 //   0  u8  flags  bit0 fix, bit1 gps alive, bit2 imu ok, bit3 점 저장됨, bit4 세션 시작
 //   1  u8  sats
 //   2  u8  hdop×10
-//   3  u8  zone 0~4
+//   3  u8  bit0-2 zone 0~4, bit3-7 보이는 위성 수(GSV 합, 최대 31) — fix 전 안테나 상태 표시용
 //   4  i32 lat ×1e7
 //   8  i32 lon ×1e7
 //   12 u16 speed cm/s

@@ -38,6 +38,9 @@
 
 // ---------------- 전역 ----------------
 TinyGPSPlus      gps;
+// GSV 3번 필드 = 해당 위성계에서 "보이는" 위성 수. fix 전 안테나 상태 피드백용 (GPS / BeiDou 신구 표기 / GLONASS / Galileo)
+TinyGPSCustom    gsvGP(gps, "GPGSV", 3), gsvGB(gps, "GBGSV", 3), gsvBD(gps, "BDGSV", 3),
+                 gsvGL(gps, "GLGSV", 3), gsvGA(gps, "GAGSV", 3);
 ICM42688         imu;
 TrackStore       track;
 AsyncWebServer   server(80);
@@ -119,7 +122,7 @@ static void gpsConfigure(uint32_t currentBaud) {
     GpsSerial.updateBaudRate(GPS_BAUD_RUN);
     delay(100);
   }
-  gpsSend("PCAS03,1,0,0,0,1,0,0,0,0,0,,,0,0");  // GGA=1, RMC=1, 나머지 0
+  gpsSend("PCAS03,1,0,0,1,1,0,0,0,0,0,,,0,0");  // GGA=1, GSV=1(보이는 위성 수), RMC=1, 나머지 0
   gpsSend("PCAS02,100");                        // 100ms 주기 = 10Hz (최대)
 }
 
@@ -153,6 +156,14 @@ static bool gpsProbe() {
   GpsSerial.setRxBufferSize(2048);
   GpsSerial.begin(GPS_BAUD_RUN, SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);
   return false;
+}
+
+// 보이는 위성 수 합계 (3초 내 갱신된 위성계만)
+static uint8_t satsInView() {
+  TinyGPSCustom* all[] = {&gsvGP, &gsvGB, &gsvBD, &gsvGL, &gsvGA};
+  int n = 0;
+  for (TinyGPSCustom* c : all) if (c->isValid() && c->age() < 3000) n += atoi(c->value());
+  return n > 255 ? 255 : (uint8_t)n;
 }
 
 // Howard Hinnant days_from_civil — TZ 의존 없이 UTC epoch 계산
@@ -250,10 +261,10 @@ static void pushStatus(bool stored) {
   const uint32_t el  = S.started ? (now - S.start_ms) / 1000 : 0;
   const bool gpsAlive = g_last_gps_byte_ms && (now - g_last_gps_byte_ms) < 3000;
   snprintf(g_json, sizeof g_json,
-    "{\"fix\":%d,\"gps\":%d,\"sat\":%u,\"hdop\":%.1f,\"lat\":%.7f,\"lon\":%.7f,\"spd\":%.1f,\"crs\":%.0f,"
+    "{\"fix\":%d,\"gps\":%d,\"sat\":%u,\"siv\":%u,\"hdop\":%.1f,\"lat\":%.7f,\"lon\":%.7f,\"spd\":%.1f,\"crs\":%.0f,"
     "\"dist\":%.1f,\"max\":%.1f,\"el\":%u,\"z\":[%.0f,%.0f,%.0f,%.0f,%.0f],\"spr\":%u,"
     "\"pl\":%.1f,\"imu\":%d,\"pt\":%d,\"n\":%u}",
-    S.fix, gpsAlive, (unsigned)gps.satellites.value(), gps.hdop.isValid() ? gps.hdop.hdop() : 99.9,
+    S.fix, gpsAlive, (unsigned)gps.satellites.value(), (unsigned)satsInView(), gps.hdop.isValid() ? gps.hdop.hdop() : 99.9,
     S.lat, S.lon, S.fix ? S.kmh : 0.0f, S.course,
     S.dist_m, S.max_kmh, (unsigned)el,
     S.zone_m[0], S.zone_m[1], S.zone_m[2], S.zone_m[3], S.zone_m[4], S.sprints,
@@ -270,7 +281,8 @@ static void pushStatus(bool stored) {
     f[0] = (S.fix ? 1 : 0) | (gpsAlive ? 2 : 0) | (imu.ok() ? 4 : 0) | (stored ? 8 : 0) | (S.started ? 16 : 0);
     f[1] = clampU8((float)gps.satellites.value());
     f[2] = clampU8((gps.hdop.isValid() ? (float)gps.hdop.hdop() : 25.5f) * 10.0f);
-    f[3] = (uint8_t)z;
+    const uint8_t siv = satsInView();
+    f[3] = (uint8_t)(z | ((siv > 31 ? 31 : siv) << 3));   // bit0-2 zone, bit3-7 보이는 위성 수(최대 31)
     putU32(f + 4,  (uint32_t)(int32_t)lround(S.lat * 1e7));
     putU32(f + 8,  (uint32_t)(int32_t)lround(S.lon * 1e7));
     putU16(f + 12, clampU16(kmh / 0.036f));           // km/h → cm/s
@@ -520,9 +532,9 @@ void loop() {
   static uint32_t last_log = 0;
   if (millis() - last_log >= 5000) {
     last_log = millis();
-    Serial.printf("[LOG] gps=%s fix=%d sat=%u hdop=%.1f spd=%.1fkm/h dist=%.0fm pts=%u sse=%u ble=%d/mtu%u heap=%u chars=%lu bad=%lu nmea=%lu\n",
+    Serial.printf("[LOG] gps=%s fix=%d sat=%u siv=%u hdop=%.1f spd=%.1fkm/h dist=%.0fm pts=%u sse=%u ble=%d/mtu%u heap=%u chars=%lu bad=%lu nmea=%lu\n",
                   (millis() - g_last_gps_byte_ms) < 3000 ? "ok" : "NONE", S.fix,
-                  (unsigned)gps.satellites.value(), gps.hdop.isValid() ? gps.hdop.hdop() : 99.9, S.kmh, S.dist_m,
+                  (unsigned)gps.satellites.value(), (unsigned)satsInView(), gps.hdop.isValid() ? gps.hdop.hdop() : 99.9, S.kmh, S.dist_m,
                   (unsigned)track.count(), (unsigned)events.count(),
 #if ENABLE_BLE
                   bleConnected(), (unsigned)bleMtu(),

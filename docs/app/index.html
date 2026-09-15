@@ -104,8 +104,10 @@ function update(d){
   const km=d.dist>=1000;$('dist').textContent=km?(d.dist/1000).toFixed(2):Math.round(d.dist);$('du').textContent=km?'km':'m';
   $('spd').textContent=d.spd.toFixed(1);$('max').textContent=d.max.toFixed(1);$('el').textContent=fmtEl(d.el);$('spr').textContent=d.spr;
   const zt=d.z.reduce((a,b)=>a+b,0)||1;d.z.forEach((v,i)=>$('z'+i).style.width=(v/zt*100)+'%');
-  let s=(bleOn?'<b class="ok">BLE</b> ':'')+(d.gps?(d.fix?'<b class="ok">● FIX</b>':'<b class="warn">● 위성 탐색 중</b>'):'<b class="bad">● GPS 무응답</b> 배선 확인');
-  s+=' · 위성 '+d.sat+' · HDOP '+d.hdop.toFixed(1)+' · 점 '+d.n;
+  let s=(bleOn?'<b class="ok">BLE</b> ':'');
+  if(!d.gps)s+='<b class="bad">● GPS 무응답</b> 배선 확인';
+  else if(d.fix)s+='<b class="ok">● FIX</b> · 위성 '+d.sat+' · HDOP '+d.hdop.toFixed(1)+' · 점 '+d.n;
+  else s+='<b class="warn">● 위성 탐색 중</b> · 보이는 위성 '+(d.siv||0)+'개'+((d.siv||0)<4?' · 하늘이 보이는 실외로 (첫 fix 1~2분)':' · 곧 잡힘');
   if(d.imu)s+=' · PL '+d.pl.toFixed(0);
   $('st').innerHTML=s;
   if(d.fix){const p=[d.lat,d.lon];last=p;if(d.pt)addPt(p);
@@ -164,7 +166,7 @@ function onFix(v){
   if(v.byteLength<20)return;
   const fl=v.getUint8(0);
   update({fix:fl&1?1:0,gps:fl&2?1:0,imu:fl&4?1:0,pt:fl&8?1:0,
-    sat:v.getUint8(1),hdop:v.getUint8(2)/10,
+    sat:v.getUint8(1),hdop:v.getUint8(2)/10,siv:v.getUint8(3)>>3,
     lat:v.getInt32(4,true)/1e7,lon:v.getInt32(8,true)/1e7,
     spd:v.getUint16(12,true)*0.036,crs:v.getUint16(14,true)/10,dist:v.getUint32(16,true)/100,
     max:stats.max,el:stats.el,z:stats.z,spr:stats.spr,pl:stats.pl,n:stats.n});

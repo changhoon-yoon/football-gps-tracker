@@ -1,4 +1,5 @@
 .pio/
 .vscode/
 include/wifi_secrets.h
-src/web_page.h        # tools/embed_page.py가 docs/app/index.html에서 생성
+# tools/embed_page.py가 docs/app/index.html에서 생성하는 파일
+src/web_page.h

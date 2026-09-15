@@ -55,11 +55,13 @@ button,a.btn{flex:1 1 0;min-width:0;padding:9px 0;border:0;border-radius:8px;bac
 .tilt{display:flex;align-items:center;gap:12px;margin-top:8px}
 .tilt canvas{width:64px;height:64px;flex:0 0 64px}
 .tilt span{font-size:12px;color:#cfd8dc}
+select{background:#22262b;color:#eee;border:1px solid #3a3f46;border-radius:6px;padding:4px 6px;font-size:12px;font-family:inherit;max-width:100%}
+.note{font-size:11px;color:#9aa;margin-top:8px;line-height:1.4}
 </style></head><body>
 <div id="map"></div><canvas id="local"></canvas>
 <div id="st">연결 중…</div>
 <div id="gp">
- <div class="tabs"><button class="tb on" data-t="gps">GPS</button><button class="tb" data-t="imu">IMU</button></div>
+ <div class="tabs"><button class="tb on" data-t="gps">GPS</button><button class="tb" data-t="imu">IMU</button><button class="tb" data-t="cfg">설정</button></div>
  <div id="tab-gps">
   <div class="kv">
    <b>위도</b><span id="g_lat">-</span><b>경도</b><span id="g_lon">-</span>
@@ -83,6 +85,19 @@ button,a.btn{flex:1 1 0;min-width:0;padding:9px 0;border:0;border-radius:8px;bac
   <div class="ch"><div class="cl"><span>가속도 (g) · 최근 6초</span><span><i style="color:#ef4444">X</i> <i style="color:#22c55e">Y</i> <i style="color:#3b82f6">Z</i></span></div><canvas id="ca"></canvas></div>
   <div class="ch"><div class="cl"><span>각속도 (°/s)</span><span><i style="color:#ef4444">X</i> <i style="color:#22c55e">Y</i> <i style="color:#3b82f6">Z</i></span></div><canvas id="cg"></canvas></div>
   <div class="tilt"><canvas id="ct"></canvas><span id="i_tilt">기울기 - (가속도 기준 피치·롤, 정지 시 정확)</span></div>
+ </div>
+ <div id="tab-cfg" hidden>
+  <div class="kv">
+   <b>항법 모드</b><span><select id="c_nav">
+     <option value="0">0 휴대 (범용, 급가속 추종)</option>
+     <option value="1">1 정지 (고정 위치용)</option>
+     <option value="2">2 보행 (걷기·조깅, 정지 필터 없음)</option>
+     <option value="3">3 차량 (공장값, 저속을 0으로 누름)</option>
+   </select></span>
+   <b>기기 현재값</b><span id="c_navcur">-</span>
+  </div>
+  <div class="gpb"><button id="c_apply">적용</button></div>
+  <div id="c_msg" class="note">GPS 모듈의 움직임 가정입니다. 걷기 테스트는 보행, 경기에서는 휴대와 비교해 보세요. 기기에 저장되어 재부팅 후에도 유지됩니다.</div>
  </div>
 </div>
 <div id="hud">
@@ -162,6 +177,7 @@ function update(d){
   s+='<span class="tg">상세 '+(gpOpen?'▴':'▾')+'</span>';
   $('st').innerHTML=s;
   lastPl=d.pl||0;
+  if(d.nav!=null)showNav(d.nav);
   gpsPanel(d);
   if(d.fix){const p=[d.lat,d.lon];last=p;if(d.pt)addPt(p);
     if(hasL){marker.setLatLng(p);if(!centered){map.setView(p,17);centered=true;}else if(follow)map.panTo(p,{animate:false});}
@@ -188,7 +204,26 @@ function gpsPanel(d){
 }
 $('st').onclick=()=>{gpOpen=!gpOpen;$('gp').classList.toggle('open',gpOpen);if(gpOpen){const f=$('feed');f.scrollTop=f.scrollHeight;if(imuTab)drawImu();}};
 document.querySelectorAll('.tb').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tb').forEach(x=>x.classList.toggle('on',x===b));
-  imuTab=b.dataset.t==='imu';$('tab-gps').hidden=imuTab;$('tab-imu').hidden=!imuTab;if(imuTab)drawImu();});
+  const t=b.dataset.t;['gps','imu','cfg'].forEach(k=>$('tab-'+k).hidden=(k!==t));imuTab=(t==='imu');if(imuTab)drawImu();});
+
+/* ---- 설정 탭: 항법 모드 (WiFi: POST /config, BLE: CTRL [0x10, mode]) ---- */
+const NAV_NAMES={0:'휴대',1:'정지',2:'보행',3:'차량',4:'해상',5:'항공<1g',6:'항공<2g',7:'항공<4g'};
+let navCur=null,navTouched=false;
+function showNav(n){
+  if(n==null)return;
+  const changed=navCur!==n;navCur=n;
+  $('c_navcur').textContent=n+' '+(NAV_NAMES[n]||'');
+  if(!navTouched)$('c_nav').value=String(n);
+  if(changed&&$('c_msg').dataset.wait){$('c_msg').textContent='기기에 적용됨: '+n+' '+(NAV_NAMES[n]||'');delete $('c_msg').dataset.wait;}
+}
+$('c_nav').onchange=()=>{navTouched=true;};
+$('c_apply').onclick=()=>{
+  const m=+$('c_nav').value,msg=$('c_msg');
+  msg.textContent='적용 요청 중…';msg.dataset.wait='1';
+  const p=bleOn?bleCtrl.writeValue(Uint8Array.of(0x10,m)):fetch('/config',{method:'POST',body:new URLSearchParams({nav:m})}).then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);});
+  p.then(()=>{if(msg.dataset.wait)msg.textContent='요청 보냄 · 기기 현재값이 '+m+'으로 바뀌면 완료 (1초 내)';navTouched=false;})
+   .catch(e=>{msg.textContent='실패: '+(e&&e.message||e);delete msg.dataset.wait;});
+};
 
 /* ---- IMU 탭: 25Hz 샘플(200ms 묶음) → 수치 + 스트립 차트 + 기울기 ---- */
 const IMU_N=150;                                        // 6초 @25Hz
@@ -302,6 +337,7 @@ function onStats(v){
   if(v.byteLength<20)return;
   stats={max:v.getUint16(0,true)/10,el:v.getUint16(2,true),z:[0,1,2,3,4].map(i=>v.getUint16(4+i*2,true)),
     spr:v.getUint16(14,true),pl:v.getUint16(16,true)/10,n:v.getUint16(18,true),alt:v.byteLength>=22?v.getInt16(20,true):null};
+  if(v.byteLength>=23)showNav(v.getUint8(22));
 }
 function onImu(v){
   const n=Math.floor(v.byteLength/12),arr=[];
@@ -339,9 +375,9 @@ $('gpx').onclick=e=>{
   a.href=u;a.download='foottrack.gpx';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),2000);
 };
 document.addEventListener('visibilitychange',()=>{if(bleOn&&document.visibilityState==='visible')keepAwake();});
-if(location.hash==='#gps'||location.hash==='#imu'){                 // 주소 끝에 #imu 붙이면 IMU 탭이 열린 채 시작
+if(/^#(gps|imu|cfg)$/.test(location.hash)){                         // 주소 끝에 #imu, #cfg 를 붙이면 그 탭이 열린 채 시작
   gpOpen=true;$('gp').classList.add('open');
-  if(location.hash==='#imu')document.querySelector('.tb[data-t="imu"]').click();
+  document.querySelector('.tb[data-t="'+location.hash.slice(1)+'"]').click();
 }
 window.addEventListener('resize',()=>drawLocal(last));
 })();

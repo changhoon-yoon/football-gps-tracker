@@ -5,7 +5,7 @@
 //   FIX    ...-0001  notify 10Hz, 20B  (아래 프레임 규격)
 //   STATS  ...-0002  notify 1Hz,  22B
 //   HIST   ...-0003  notify, 저장 동선 재생: 점당 8B(lat_e7,lon_e7) × N, 끝 마커 = lat 0x7FFFFFFF + 총점수
-//   CTRL   ...-0004  write 1B: 0x01 리셋, 0x02 이력 재요청
+//   CTRL   ...-0004  write: [0x01] 리셋, [0x02] 이력 재요청, [0x10, mode] 항법 모드 설정(0~7)
 //   IMU    ...-0005  notify 5Hz, 샘플 12B(i16 ax,ay,az mg + i16 gx,gy,gz 0.1°/s) × 5개 = 60B (MTU 작으면 마지막 1개만)
 //
 //  FIX (little-endian, 20B)
@@ -18,8 +18,8 @@
 //   12 u16 speed cm/s
 //   14 u16 course ×10
 //   16 u32 dist cm
-//  STATS (22B)
-//   0  u16 max km/h ×10   2 u16 elapsed s   4..13 u16 zone[5] m   14 u16 sprints   16 u16 PL×10   18 u16 points   20 i16 고도 m
+//  STATS (23B)
+//   0  u16 max km/h ×10   2 u16 elapsed s   4..13 u16 zone[5] m   14 u16 sprints   16 u16 PL×10   18 u16 points   20 i16 고도 m   22 u8 항법 모드
 // ============================================================
 #pragma once
 #include <Arduino.h>
@@ -30,7 +30,7 @@ static inline void putU32(uint8_t* p, uint32_t v) { p[0] = v & 0xFF; p[1] = (v >
 static inline uint16_t clampU16(float v) { return v < 0 ? 0 : v > 65535.0f ? 65535 : (uint16_t)v; }
 static inline uint8_t  clampU8(float v)  { return v < 0 ? 0 : v > 255.0f ? 255 : (uint8_t)v; }
 
-void bleSetup(const char* name, TrackStore* track, void (*onReset)());
+void bleSetup(const char* name, TrackStore* track, void (*onReset)(), void (*onNavMode)(uint8_t));
 void bleLoop();                                   // 이력 스트리밍 진행 (loop에서 호출)
 void bleNotifyFix(const uint8_t* frame, size_t len);
 void bleNotifyStats(const uint8_t* frame, size_t len);

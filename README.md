@@ -77,6 +77,8 @@ Android는 mDNS(`.local`)를 브라우저에서 못 푸는 경우가 많으니 I
     좌표가 10Hz로 흐르는 피드(최근 60줄), 좌표 복사·지도앱 열기.
   - IMU: 가속도 3축(g)·각속도 3축(°/s) 수치와 최근 6초 스트립 차트, 합성 가속도 |a|, 10초 피크, PlayerLoad,
     가속도 기준 피치·롤 기울기 표시기. 스트림은 100Hz 중 25Hz를 200ms마다 5개씩 묶어 보낸다(SSE `imu` 이벤트 / BLE IMU 특성).
+  - 설정: GPS 항법 모드(0 휴대 / 1 정지 / 2 보행 / 3 차량)를 기기에서 바로 바꾼다. WiFi는 `POST /config nav=N`,
+    BLE는 CTRL 쓰기 `[0x10, N]`. NVS에 저장되어 재부팅 후 유지. 현재값은 SSE `nav` / BLE STATS 23번째 바이트로 확인.
 - **리셋**: 세션·동선 초기화. **GPX**: 표준 GPX 파일 다운로드(Google Earth, Strava 등에서 열림)
 
 ## 지표 계산 방식
@@ -127,6 +129,8 @@ WiFi와 BLE를 같이 켜면 WiFi 모뎀 슬립이 강제되어 SSE 지연이 �
 | `GET /track.gpx` | GPX 1.1 다운로드 |
 | `GET /status` | 마지막 SSE 페이로드 (디버깅) |
 | `POST /reset` | 세션 초기화 |
+| `GET /config` | 런타임 설정 `{"nav":2}` |
+| `POST /config` | `nav=0..7` 항법 모드 변경 (즉시 적용 + 저장) |
 
 SSE 페이로드 예:
 ```json

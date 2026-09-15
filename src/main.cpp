@@ -17,6 +17,7 @@
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <TinyGPSPlus.h>
+#include <Preferences.h>
 #include <time.h>
 #include <math.h>
 #include <memory>
@@ -68,6 +69,11 @@ struct Session {
   float    track_step_m = TRACK_MIN_STEP_M;
 };
 static Session S;
+
+// ---- 런타임 설정 (NVS에 저장, 웹/BLE에서 변경) ----
+Preferences      g_prefs;
+static uint8_t   g_navMode = GPS_NAV_MODE;         // PCAS11 항법 모드
+static volatile int16_t g_navPending = -1;          // 웹/BLE 태스크 → loop 로 넘기는 변경 요청
 
 static bool     g_wifi_sta = false;
 static uint32_t g_last_gps_byte_ms = 0;
@@ -124,9 +130,20 @@ static void gpsConfigure(uint32_t currentBaud) {
   }
   gpsSend("PCAS03,1,0,0,1,1,0,0,0,0,0,,,0,0");  // GGA=1, GSV=1(보이는 위성 수), RMC=1, 나머지 0
   gpsSend("PCAS02,100");                        // 100ms 주기 = 10Hz (최대)
-  char nav[16]; snprintf(nav, sizeof nav, "PCAS11,%d", GPS_NAV_MODE);
+  char nav[16]; snprintf(nav, sizeof nav, "PCAS11,%u", g_navMode);
   gpsSend(nav);                                 // 항법 모드 (차량 모드의 저속 정지 필터가 걷기 속도를 0으로 만드는 문제 회피)
-  Serial.printf("[GPS] 항법 모드 %d (0휴대 1정지 2보행 3차량)\n", GPS_NAV_MODE);
+  Serial.printf("[GPS] 항법 모드 %u (0휴대 1정지 2보행 3차량)\n", g_navMode);
+}
+
+// 항법 모드 변경: GPS 모듈에 즉시 적용 + NVS 저장. loop 컨텍스트에서만 호출 (GpsSerial 접근)
+static bool applyNavMode(uint8_t m) {
+  if (m > 7) return false;
+  g_navMode = m;
+  char nav[16]; snprintf(nav, sizeof nav, "PCAS11,%u", m);
+  gpsSend(nav);
+  g_prefs.putUChar("nav", m);
+  Serial.printf("[CFG] 항법 모드 → %u (저장됨)\n", m);
+  return true;
 }
 
 // 배선 TX/RX 뒤바뀜과 보레이트 잔존(전원 유지 시 115200)을 자동 감지. 최대 약 5초.
@@ -270,12 +287,12 @@ static void pushStatus(bool stored) {
   snprintf(g_json, sizeof g_json,
     "{\"fix\":%d,\"gps\":%d,\"sat\":%u,\"siv\":%u,\"hdop\":%.1f,\"lat\":%.7f,\"lon\":%.7f,\"alt\":%.1f,\"spd\":%.1f,\"crs\":%.0f,"
     "\"utc\":\"%s\",\"dist\":%.1f,\"max\":%.1f,\"el\":%u,\"z\":[%.0f,%.0f,%.0f,%.0f,%.0f],\"spr\":%u,"
-    "\"pl\":%.1f,\"imu\":%d,\"pt\":%d,\"n\":%u,\"nmea\":\"%s\"}",
+    "\"pl\":%.1f,\"imu\":%d,\"pt\":%d,\"n\":%u,\"nav\":%u,\"nmea\":\"%s\"}",
     S.fix, gpsAlive, (unsigned)gps.satellites.value(), (unsigned)satsInView(), gps.hdop.isValid() ? gps.hdop.hdop() : 99.9,
     S.lat, S.lon, alt, S.fix ? S.kmh : 0.0f, S.course, utc,
     S.dist_m, S.max_kmh, (unsigned)el,
     S.zone_m[0], S.zone_m[1], S.zone_m[2], S.zone_m[3], S.zone_m[4], S.sprints,
-    S.player_load, imu.ok(), stored, (unsigned)track.count(), g_nmea_line);   // NMEA는 따옴표·백슬래시가 없어 JSON에 그대로 안전
+    S.player_load, imu.ok(), stored, (unsigned)track.count(), g_navMode, g_nmea_line);   // NMEA는 따옴표·백슬래시가 없어 JSON에 그대로 안전
   if (events.count() > 0) events.send(g_json, "fix", now);
   g_last_push_ms = now;
 
@@ -300,7 +317,7 @@ static void pushStatus(bool stored) {
     static uint32_t last_stats_ms = 0;
     if (now - last_stats_ms >= 1000) {
       last_stats_ms = now;
-      uint8_t s[22];
+      uint8_t s[23];
       putU16(s + 0, clampU16(S.max_kmh * 10.0f));
       putU16(s + 2, clampU16((float)el));
       for (int i = 0; i < 5; i++) putU16(s + 4 + i * 2, clampU16(S.zone_m[i]));
@@ -308,6 +325,7 @@ static void pushStatus(bool stored) {
       putU16(s + 16, clampU16(S.player_load * 10.0f));
       putU16(s + 18, clampU16((float)track.count()));
       putU16(s + 20, (uint16_t)(int16_t)alt);          // 고도 m (부호 있음)
+      s[22] = g_navMode;                                // 현재 항법 모드 (설정 탭 표시용)
       bleNotifyStats(s, sizeof s);
     }
   }
@@ -464,6 +482,21 @@ static void webSetup() {
     resetSession();
     req->send(200, "text/plain", "ok");
   });
+  // 런타임 설정: GET /config → 현재값, POST /config (nav=0..7, 폼 또는 쿼리) → loop에서 적용
+  server.on("/config", HTTP_GET, [](AsyncWebServerRequest* req) {
+    char b[48]; snprintf(b, sizeof b, "{\"nav\":%u}", g_navMode);
+    req->send(200, "application/json", b);
+  });
+  server.on("/config", HTTP_POST, [](AsyncWebServerRequest* req) {
+    const AsyncWebParameter* p = req->hasParam("nav", true) ? req->getParam("nav", true)
+                               : req->hasParam("nav") ? req->getParam("nav") : nullptr;
+    if (!p) { req->send(400, "application/json", "{\"err\":\"nav 없음\"}"); return; }
+    const int m = p->value().toInt();
+    if (m < 0 || m > 7) { req->send(400, "application/json", "{\"err\":\"nav 0~7\"}"); return; }
+    g_navPending = (int16_t)m;                  // GpsSerial은 loop에서만 만지므로 요청만 남김
+    char b[48]; snprintf(b, sizeof b, "{\"ok\":1,\"nav\":%d}", m);
+    req->send(200, "application/json", b);
+  });
   server.onNotFound([](AsyncWebServerRequest* req) { req->send(404, "text/plain", "not found"); });
 
   events.onConnect([](AsyncEventSourceClient* client) {
@@ -521,13 +554,18 @@ void setup() {
   if (!track.begin(TRACK_CAP_SRAM, TRACK_CAP_PSRAM)) Serial.println("[TRACK] 버퍼 할당 실패!");
   else Serial.printf("[TRACK] %u점 버퍼 (%s)\n", (unsigned)track.capacity(), track.inPsram() ? "PSRAM" : "SRAM");
 
+  g_prefs.begin("foottrack", false);
+  g_navMode = g_prefs.getUChar("nav", GPS_NAV_MODE);
+  if (g_navMode > 7) g_navMode = GPS_NAV_MODE;
+  Serial.printf("[CFG] 저장된 항법 모드 %u\n", g_navMode);
+
   g_gps_found = gpsProbe();
 
   if (imu.begin(PIN_IMU_SCK, PIN_IMU_MISO, PIN_IMU_MOSI, PIN_IMU_CS)) Serial.println("[IMU] ICM-42688-P OK (±16g/±2000dps, 100Hz)");
   else Serial.println("[IMU] 감지 실패 — GPS만으로 동작 (PlayerLoad 없음)");
 
 #if ENABLE_BLE
-  bleSetup(BLE_NAME, &track, resetSession);
+  bleSetup(BLE_NAME, &track, resetSession, [](uint8_t m) { g_navPending = m; });
 #endif
 #if ENABLE_WIFI
   wifiSetup();
@@ -559,6 +597,7 @@ void loop() {
 #if ENABLE_BLE
   bleLoop();                                         // 리셋 명령 처리, 이력 재생 진행
 #endif
+  if (g_navPending >= 0) { const uint8_t m = (uint8_t)g_navPending; g_navPending = -1; applyNavMode(m); }
   // 4) fix 없어도 1Hz 하트비트 (위성 수/HDOP/GPS 무응답 표시용)
   if (millis() - g_last_push_ms >= 1000) { S.fix = false; pushStatus(false); }
   // 5) GPS를 못 찾았고 여전히 조용하면 15초마다 재탐색 (배선을 나중에 꽂아도 잡힘)

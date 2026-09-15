@@ -19,6 +19,8 @@ NimBLECharacteristic* s_ctrl  = nullptr;
 NimBLECharacteristic* s_imu   = nullptr;
 TrackStore*  s_track = nullptr;
 void (*s_onReset)() = nullptr;
+void (*s_onNav)(uint8_t) = nullptr;
+volatile int16_t s_navReq = -1;
 
 volatile bool     s_connected = false;
 volatile uint16_t s_mtu = 23;
@@ -54,6 +56,7 @@ class CtrlCB : public NimBLECharacteristicCallbacks {
     const uint8_t cmd = v.data()[0];
     if (cmd == 0x01) s_resetReq = true;
     else if (cmd == 0x02) s_histReq = true;
+    else if (cmd == 0x10 && v.length() >= 2 && v.data()[1] <= 7) s_navReq = v.data()[1];
   }
 };
 
@@ -64,9 +67,10 @@ class HistCB : public NimBLECharacteristicCallbacks {
 };
 }  // namespace
 
-void bleSetup(const char* name, TrackStore* track, void (*onReset)()) {
+void bleSetup(const char* name, TrackStore* track, void (*onReset)(), void (*onNavMode)(uint8_t)) {
   s_track = track;
   s_onReset = onReset;
+  s_onNav = onNavMode;
 
   NimBLEDevice::init(name);
   NimBLEDevice::setPower(ESP_PWR_LVL_P9);
@@ -123,6 +127,7 @@ uint16_t bleMtu()   { return s_mtu; }
 
 void bleLoop() {
   if (s_resetReq) { s_resetReq = false; if (s_onReset) s_onReset(); }
+  if (s_navReq >= 0) { const uint8_t m = (uint8_t)s_navReq; s_navReq = -1; if (s_onNav) s_onNav(m); }
   if (s_histReq) {
     s_histReq = false;
     s_histActive = true;

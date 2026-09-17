@@ -285,10 +285,10 @@ static void pushStatus(bool stored) {
     snprintf(utc, sizeof utc, "%02u:%02u:%02u.%u", gps.time.hour(), gps.time.minute(), gps.time.second(), gps.time.centisecond() / 10);
   const float alt = (S.fix && gps.altitude.isValid()) ? (float)gps.altitude.meters() : 0.0f;
   snprintf(g_json, sizeof g_json,
-    "{\"fix\":%d,\"gps\":%d,\"sat\":%u,\"siv\":%u,\"hdop\":%.1f,\"lat\":%.7f,\"lon\":%.7f,\"alt\":%.1f,\"spd\":%.1f,\"crs\":%.0f,"
+    "{\"ms\":%lu,\"fix\":%d,\"gps\":%d,\"sat\":%u,\"siv\":%u,\"hdop\":%.1f,\"lat\":%.7f,\"lon\":%.7f,\"alt\":%.1f,\"spd\":%.2f,\"crs\":%.1f,"
     "\"utc\":\"%s\",\"dist\":%.1f,\"max\":%.1f,\"el\":%u,\"z\":[%.0f,%.0f,%.0f,%.0f,%.0f],\"spr\":%u,"
     "\"pl\":%.1f,\"imu\":%d,\"pt\":%d,\"n\":%u,\"nav\":%u,\"nmea\":\"%s\"}",
-    S.fix, gpsAlive, (unsigned)gps.satellites.value(), (unsigned)satsInView(), gps.hdop.isValid() ? gps.hdop.hdop() : 99.9,
+    (unsigned long)now, S.fix, gpsAlive, (unsigned)gps.satellites.value(), (unsigned)satsInView(), gps.hdop.isValid() ? gps.hdop.hdop() : 99.9,
     S.lat, S.lon, alt, S.fix ? S.kmh : 0.0f, S.course, utc,
     S.dist_m, S.max_kmh, (unsigned)el,
     S.zone_m[0], S.zone_m[1], S.zone_m[2], S.zone_m[3], S.zone_m[4], S.sprints,
@@ -301,7 +301,7 @@ static void pushStatus(bool stored) {
   if (bleConnected()) {
     const float kmh = S.fix ? S.kmh : 0.0f;
     const int z = kmh < ZONE_KMH_1 ? 0 : kmh < ZONE_KMH_2 ? 1 : kmh < ZONE_KMH_3 ? 2 : kmh < ZONE_KMH_4 ? 3 : 4;
-    uint8_t f[20];
+    uint8_t f[24];
     f[0] = (S.fix ? 1 : 0) | (gpsAlive ? 2 : 0) | (imu.ok() ? 4 : 0) | (stored ? 8 : 0) | (S.started ? 16 : 0);
     f[1] = clampU8((float)gps.satellites.value());
     f[2] = clampU8((gps.hdop.isValid() ? (float)gps.hdop.hdop() : 25.5f) * 10.0f);
@@ -312,6 +312,7 @@ static void pushStatus(bool stored) {
     putU16(f + 12, clampU16(kmh / 0.036f));           // km/h → cm/s
     putU16(f + 14, clampU16(S.course * 10.0f));
     putU32(f + 16, (uint32_t)(S.dist_m * 100.0f));    // m → cm
+    putU32(f + 20, now);                               // 기기 ms (GPS·IMU 공통 시간축)
     bleNotifyFix(f, sizeof f);
 
     static uint32_t last_stats_ms = 0;
@@ -336,10 +337,11 @@ static void pushStatus(bool stored) {
 struct ImuSample { int16_t a[3]; int16_t g[3]; };   // mg, 0.1 °/s
 static ImuSample g_imuBatch[5];
 static uint8_t   g_imuN = 0, g_imuDecim = 0;
+static uint32_t  g_imuLastMs = 0;                    // 묶음 마지막 샘플의 기기 ms (샘플 간격 40ms)
 
 static void imuEmit() {
   if (events.count() > 0) {
-    char buf[240]; int n = snprintf(buf, sizeof buf, "{\"s\":[");
+    char buf[260]; int n = snprintf(buf, sizeof buf, "{\"t\":%lu,\"s\":[", (unsigned long)g_imuLastMs);
     for (int i = 0; i < 5 && n < (int)sizeof buf - 40; i++) {
       const ImuSample& s = g_imuBatch[i];
       n += snprintf(buf + n, sizeof buf - n, "%s[%d,%d,%d,%d,%d,%d]", i ? "," : "", s.a[0], s.a[1], s.a[2], s.g[0], s.g[1], s.g[2]);
@@ -349,10 +351,11 @@ static void imuEmit() {
   }
 #if ENABLE_BLE
   if (bleConnected()) {
-    uint8_t b[60];
+    uint8_t b[64];
+    putU32(b, g_imuLastMs);
     for (int i = 0; i < 5; i++) {
       const ImuSample& s = g_imuBatch[i];
-      for (int k = 0; k < 3; k++) { putU16(b + i * 12 + k * 2, (uint16_t)s.a[k]); putU16(b + i * 12 + 6 + k * 2, (uint16_t)s.g[k]); }
+      for (int k = 0; k < 3; k++) { putU16(b + 4 + i * 12 + k * 2, (uint16_t)s.a[k]); putU16(b + 4 + i * 12 + 6 + k * 2, (uint16_t)s.g[k]); }
     }
     bleNotifyImu(b, sizeof b);
   }
@@ -380,6 +383,7 @@ static void imuTask() {
     ImuSample& s = g_imuBatch[g_imuN++];
     s.a[0] = (int16_t)lroundf(ax * 1000.0f); s.a[1] = (int16_t)lroundf(ay * 1000.0f); s.a[2] = (int16_t)lroundf(az * 1000.0f);
     s.g[0] = (int16_t)lroundf(gx * 10.0f);   s.g[1] = (int16_t)lroundf(gy * 10.0f);   s.g[2] = (int16_t)lroundf(gz * 10.0f);
+    g_imuLastMs = now;
     if (g_imuN >= 5) { imuEmit(); g_imuN = 0; }
   }
 }

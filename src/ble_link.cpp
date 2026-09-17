@@ -116,8 +116,9 @@ void bleNotifyStats(const uint8_t* frame, size_t len) {
 
 void bleNotifyImu(const uint8_t* frame, size_t len) {
   if (!s_connected || !s_imu) return;
-  const uint8_t* p = frame; size_t n = len;
-  if ((size_t)s_mtu < len + 3 && len >= 12) { p = frame + len - 12; n = 12; }   // MTU 부족 → 마지막 샘플만
+  // 프레임 = [u32 기기 ms][12B 샘플 × N]. MTU가 부족하면 [ms][마지막 샘플] 16B만 보낸다
+  uint8_t small[16]; const uint8_t* p = frame; size_t n = len;
+  if ((size_t)s_mtu < len + 3 && len >= 16) { memcpy(small, frame, 4); memcpy(small + 4, frame + len - 12, 12); p = small; n = 16; }
   s_imu->setValue(p, n);
   s_imu->notify();
 }

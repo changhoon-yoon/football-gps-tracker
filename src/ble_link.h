@@ -2,13 +2,14 @@
 //  BLE 링크 (NimBLE) — 폰 브라우저(Web Bluetooth) / 앱으로 실시간 전송
 //
 //  서비스  f007ba11-0000-4c45-8000-000000000000
-//   FIX    ...-0001  notify 10Hz, 20B  (아래 프레임 규격)
+//   FIX    ...-0001  notify 10Hz, 24B  (아래 프레임 규격)
 //   STATS  ...-0002  notify 1Hz,  22B
 //   HIST   ...-0003  notify, 저장 동선 재생: 점당 8B(lat_e7,lon_e7) × N, 끝 마커 = lat 0x7FFFFFFF + 총점수
 //   CTRL   ...-0004  write: [0x01] 리셋, [0x02] 이력 재요청, [0x10, mode] 항법 모드 설정(0~7)
-//   IMU    ...-0005  notify 5Hz, 샘플 12B(i16 ax,ay,az mg + i16 gx,gy,gz 0.1°/s) × 5개 = 60B (MTU 작으면 마지막 1개만)
+//   IMU    ...-0005  notify 5Hz, [u32 마지막 샘플의 기기 ms] + 샘플 12B(i16 ax,ay,az mg + i16 gx,gy,gz 0.1°/s) × 5개 = 64B
+//                      샘플 간격 40ms. MTU 작으면 [ms]+마지막 1개 = 16B
 //
-//  FIX (little-endian, 20B)
+//  FIX (little-endian, 24B)
 //   0  u8  flags  bit0 fix, bit1 gps alive, bit2 imu ok, bit3 점 저장됨, bit4 세션 시작
 //   1  u8  sats
 //   2  u8  hdop×10
@@ -18,6 +19,7 @@
 //   12 u16 speed cm/s
 //   14 u16 course ×10
 //   16 u32 dist cm
+//   20 u32 기기 ms (GPS·IMU 공통 시간축, 기록·융합용)
 //  STATS (23B)
 //   0  u16 max km/h ×10   2 u16 elapsed s   4..13 u16 zone[5] m   14 u16 sprints   16 u16 PL×10   18 u16 points   20 i16 고도 m   22 u8 항법 모드
 // ============================================================

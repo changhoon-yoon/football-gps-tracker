@@ -57,11 +57,13 @@ button,a.btn{flex:1 1 0;min-width:0;padding:9px 0;border:0;border-radius:8px;bac
 .tilt span{font-size:12px;color:#cfd8dc}
 select{background:#22262b;color:#eee;border:1px solid #3a3f46;border-radius:6px;padding:4px 6px;font-size:12px;font-family:inherit;max-width:100%}
 .note{font-size:11px;color:#9aa;margin-top:8px;line-height:1.4}
+#r_prev{font:10.5px/1.35 ui-monospace,Consolas,monospace;white-space:pre;margin:8px 0 0;color:#cfd8dc;background:#0d1013;border-radius:6px;padding:6px;overflow:auto;max-height:12vh}
+.gpb select{flex:1 1 0;min-width:0}
 </style></head><body>
 <div id="map"></div><canvas id="local"></canvas>
 <div id="st">연결 중…</div>
 <div id="gp">
- <div class="tabs"><button class="tb on" data-t="gps">GPS</button><button class="tb" data-t="imu">IMU</button><button class="tb" data-t="cfg">설정</button></div>
+ <div class="tabs"><button class="tb on" data-t="gps">GPS</button><button class="tb" data-t="imu">IMU</button><button class="tb" data-t="cfg">설정</button><button class="tb" data-t="rec">기록</button></div>
  <div id="tab-gps">
   <div class="kv">
    <b>위도</b><span id="g_lat">-</span><b>경도</b><span id="g_lon">-</span>
@@ -98,6 +100,22 @@ select{background:#22262b;color:#eee;border:1px solid #3a3f46;border-radius:6px;
   </div>
   <div class="gpb"><button id="c_apply">적용</button></div>
   <div id="c_msg" class="note">GPS 모듈의 움직임 가정입니다. 걷기 테스트는 보행, 경기에서는 휴대와 비교해 보세요. 기기에 저장되어 재부팅 후에도 유지됩니다.</div>
+ </div>
+ <div id="tab-rec" hidden>
+  <div class="kv">
+   <b>상태</b><span id="r_state">정지</span><b>경과</b><span id="r_el">00:00</span>
+   <b>GPS 행</b><span id="r_nfix">0</span><b>IMU 행</b><span id="r_nimu">0</span>
+   <b>끊김</b><span id="r_gaps">0</span><b>용량</b><span id="r_size">0 KB</span>
+  </div>
+  <div class="gpb"><button id="r_toggle">기록 시작</button><button class="sec" id="r_new">새 기록</button></div>
+  <div class="gpb"><select id="r_label">
+    <option>T1 정지 2분</option><option>T2 직선 50m</option><option>T3 사각 20x10</option>
+    <option>T4 계단 1m</option><option>T5 질주 30m</option><option>T6 실전</option><option value="">직접 입력…</option>
+   </select><button class="sec" id="r_mark">구간 시작</button></div>
+  <div class="gpb"><button class="sec" id="r_gps">GPS CSV</button><button class="sec" id="r_imu">IMU CSV</button><button class="sec" id="r_json">전체 JSON</button></div>
+  <label class="note" style="display:block"><input type="checkbox" id="r_auto"> 데이터가 들어오면 자동으로 기록 시작</label>
+  <pre id="r_prev"></pre>
+  <div id="r_msg" class="note">원본 스트림(GPS 10Hz, IMU 25Hz)을 이 폰에 저장합니다. 5초마다 브라우저 저장소에 보존되어 새로고침해도 이어집니다. 구간 마커는 CSV의 marker 열에 기록됩니다.</div>
  </div>
 </div>
 <div id="hud">
@@ -169,7 +187,7 @@ function update(d){
   const km=d.dist>=1000;$('dist').textContent=km?(d.dist/1000).toFixed(2):Math.round(d.dist);$('du').textContent=km?'km':'m';
   $('spd').textContent=d.spd.toFixed(1);$('max').textContent=d.max.toFixed(1);$('el').textContent=fmtEl(d.el);$('spr').textContent=d.spr;
   const zt=d.z.reduce((a,b)=>a+b,0)||1;d.z.forEach((v,i)=>$('z'+i).style.width=(v/zt*100)+'%');
-  let s=(bleOn?'<b class="ok">BLE</b> ':'');
+  let s=(REC.on?'<b class="bad">● REC</b> ':'')+(bleOn?'<b class="ok">BLE</b> ':'');
   if(!d.gps)s+='<b class="bad">● GPS 무응답</b> 배선 확인';
   else if(d.fix)s+='<b class="ok">● FIX</b> · 위성 '+d.sat+' · HDOP '+d.hdop.toFixed(1)+' · 점 '+d.n;
   else s+='<b class="warn">● 위성 탐색 중</b> · 보이는 위성 '+(d.siv||0)+'개'+((d.siv||0)<4?' · 하늘이 보이는 실외로 (첫 fix 1~2분)':' · 곧 잡힘');
@@ -179,6 +197,8 @@ function update(d){
   lastPl=d.pl||0;
   if(d.nav!=null)showNav(d.nav);
   gpsPanel(d);
+  if(recReady&&autoRec&&!REC.on&&!REC.userStopped)recStart();   // 저장소 복구가 끝난 뒤에만 시작 (시간축 t0 충돌 방지)
+  recFix(d);
   if(d.fix){const p=[d.lat,d.lon];last=p;if(d.pt)addPt(p);
     if(hasL){marker.setLatLng(p);if(!centered){map.setView(p,17);centered=true;}else if(follow)map.panTo(p,{animate:false});}
     else drawLocal(p);}
@@ -204,7 +224,7 @@ function gpsPanel(d){
 }
 $('st').onclick=()=>{gpOpen=!gpOpen;$('gp').classList.toggle('open',gpOpen);if(gpOpen){const f=$('feed');f.scrollTop=f.scrollHeight;if(imuTab)drawImu();}};
 document.querySelectorAll('.tb').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tb').forEach(x=>x.classList.toggle('on',x===b));
-  const t=b.dataset.t;['gps','imu','cfg'].forEach(k=>$('tab-'+k).hidden=(k!==t));imuTab=(t==='imu');if(imuTab)drawImu();});
+  const t=b.dataset.t;['gps','imu','cfg','rec'].forEach(k=>$('tab-'+k).hidden=(k!==t));if(t==='rec')recUi();imuTab=(t==='imu');if(imuTab)drawImu();});
 
 /* ---- 설정 탭: 항법 모드 (WiFi: POST /config, BLE: CTRL [0x10, mode]) ---- */
 const NAV_NAMES={0:'휴대',1:'정지',2:'보행',3:'차량',4:'해상',5:'항공<1g',6:'항공<2g',7:'항공<4g'};
@@ -228,8 +248,9 @@ $('c_apply').onclick=()=>{
 /* ---- IMU 탭: 25Hz 샘플(200ms 묶음) → 수치 + 스트립 차트 + 기울기 ---- */
 const IMU_N=150;                                        // 6초 @25Hz
 let imuA=[[],[],[]],imuG=[[],[],[]],imuTimes=[],imuPeak=[],imuTab=false,imuLast=null,lastPl=0;
-function onImuBatch(samples){                          // [[ax,ay,az(g),gx,gy,gz(°/s)],...]
+function onImuBatch(samples,ms){                       // [[ax,ay,az(g),gx,gy,gz(°/s)],...], ms=마지막 샘플의 기기 시각
   const now=performance.now();
+  recImu(samples,ms);
   for(const s of samples){
     for(let i=0;i<3;i++){imuA[i].push(s[i]);imuG[i].push(s[3+i]);if(imuA[i].length>IMU_N){imuA[i].shift();imuG[i].shift();}}
     imuPeak.push([now,Math.hypot(s[0],s[1],s[2])]);imuTimes.push(now);
@@ -275,12 +296,90 @@ $('g_copy').onclick=()=>{if(!last)return;const t=last[0].toFixed(7)+','+last[1].
 $('g_map').onclick=e=>{if(!last){e.preventDefault();return;}const q=last[0].toFixed(7)+','+last[1].toFixed(7);
   e.currentTarget.href=/Android/i.test(navigator.userAgent)?'geo:'+q+'?q='+q:'https://www.google.com/maps?q='+q;};
 
+/* ---- 기록 탭: 원본 스트림 저장(메모리 + IndexedDB) → CSV/JSON 내보내기, 검증 프로토콜 구간 마커 ---- */
+const REC={on:false,userStopped:false,t0:0,fix:[],imu:[],marks:[],marker:'',gaps:0,lastFixAt:0,meta:null};
+const FIX_COLS=['t_ms','dev_ms','utc','fix','lat','lon','alt_m','spd_kmh','crs_deg','sat','siv','hdop','dist_m','nav','src','marker'];
+const IMU_COLS=['t_ms','dev_ms','ax_g','ay_g','az_g','gx_dps','gy_dps','gz_dps','marker'];
+let autoRec=true;try{autoRec=localStorage.getItem('ft_autorec')!=='0';}catch(_){}
+let idb=null,flFix=0,flImu=0,flMark=0,metaSaved=false,recReady=false;
+function idbOpen(){return new Promise(res=>{try{const rq=indexedDB.open('foottrack',1);rq.onupgradeneeded=()=>rq.result.createObjectStore('chunks',{autoIncrement:true});rq.onsuccess=()=>{idb=rq.result;res(idb);};rq.onerror=()=>res(null);}catch(_){res(null);}});}
+function idbAdd(v){if(!idb)return;try{idb.transaction('chunks','readwrite').objectStore('chunks').add(v);}catch(_){}}
+function idbAll(){return new Promise(res=>{if(!idb)return res([]);try{const rq=idb.transaction('chunks').objectStore('chunks').getAll();rq.onsuccess=()=>res(rq.result||[]);rq.onerror=()=>res([]);}catch(_){res([]);}});}
+function idbClear(){if(!idb)return;try{idb.transaction('chunks','readwrite').objectStore('chunks').clear();}catch(_){}}
+function recStart(){
+  if(REC.on)return;
+  if(!REC.t0){REC.t0=Date.now();REC.meta={started:new Date().toISOString(),ua:navigator.userAgent,page:location.href};}
+  REC.on=true;REC.userStopped=false;REC.lastFixAt=0;recUi();
+}
+function recStop(){if(REC.marker)recMark();REC.on=false;REC.userStopped=true;recFlush();recUi();}
+function recFix(d){
+  if(!REC.on)return;
+  const t=Date.now()-REC.t0;if(REC.lastFixAt&&d.fix&&t-REC.lastFixAt>500)REC.gaps++;REC.lastFixAt=t;
+  REC.fix.push([t,d.ms!=null?d.ms:'',d.utc||'',d.fix?1:0,d.fix?d.lat.toFixed(7):'',d.fix?d.lon.toFixed(7):'',d.alt!=null?d.alt:'',
+    (+d.spd).toFixed(2),(+d.crs).toFixed(1),d.sat,d.siv!=null?d.siv:'',d.hdop,(+d.dist).toFixed(2),d.nav!=null?d.nav:(navCur!=null?navCur:''),bleOn?'ble':'sse',REC.marker]);
+}
+function recImu(samples,ms){
+  if(!REC.on)return;
+  const t=Date.now()-REC.t0,n=samples.length;
+  samples.forEach((s,i)=>{const back=(n-1-i)*40;REC.imu.push([t-back,ms!=null?ms-back:'',s[0].toFixed(3),s[1].toFixed(3),s[2].toFixed(3),s[3].toFixed(1),s[4].toFixed(1),s[5].toFixed(1),REC.marker]);});
+}
+function recMark(){                                     // 구간 시작/끝 토글
+  if(!REC.on&&!REC.marker)recStart();
+  const t=Date.now()-REC.t0;
+  if(REC.marker){REC.marks.push({t_ms:t,label:REC.marker,action:'end'});REC.marker='';}
+  else{let l=$('r_label').value;if(!l){l=(prompt('구간 이름','')||'').replace(/[,\n]/g,' ').trim();if(!l)return;}
+    REC.marker=l;REC.marks.push({t_ms:t,label:l,action:'start'});}
+  recUi();
+}
+function recFlush(){
+  if(!idb)return;
+  if(!metaSaved&&REC.t0){idbAdd({k:'meta',t0:REC.t0,meta:REC.meta});metaSaved=true;}
+  if(REC.fix.length>flFix){idbAdd({k:'fix',rows:REC.fix.slice(flFix)});flFix=REC.fix.length;}
+  if(REC.imu.length>flImu){idbAdd({k:'imu',rows:REC.imu.slice(flImu)});flImu=REC.imu.length;}
+  if(REC.marks.length>flMark){idbAdd({k:'mark',rows:REC.marks.slice(flMark)});flMark=REC.marks.length;}
+}
+function recClear(){REC.on=false;REC.userStopped=true;REC.t0=0;REC.fix=[];REC.imu=[];REC.marks=[];REC.marker='';REC.gaps=0;REC.meta=null;flFix=flImu=flMark=0;metaSaved=false;idbClear();recUi();}
+const csv=(cols,rows)=>cols.join(',')+'\n'+rows.map(r=>r.join(',')).join('\n')+'\n';
+function dl(name,text,type){const b=new Blob([text],{type}),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),3000);}
+const stamp=()=>{const d=new Date(REC.t0||Date.now());return d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'_'+pad(d.getHours())+pad(d.getMinutes());};
+function recUi(){
+  const el=REC.t0&&REC.fix.length?Math.floor(REC.fix[REC.fix.length-1][0]/1000):0;
+  $('r_state').innerHTML=REC.on?'<b class="bad">● 기록 중</b>'+(REC.marker?' · '+REC.marker:''):(REC.fix.length?'일시정지':'정지');
+  $('r_el').textContent=fmtEl(el);$('r_nfix').textContent=REC.fix.length;$('r_nimu').textContent=REC.imu.length;$('r_gaps').textContent=REC.gaps;
+  $('r_size').textContent=Math.round((REC.fix.length*95+REC.imu.length*60)/1024)+' KB'+(idb?'':' (메모리만)');
+  $('r_toggle').textContent=REC.on?'기록 정지':(REC.fix.length?'기록 이어가기':'기록 시작');
+  $('r_mark').textContent=REC.marker?'구간 끝':'구간 시작';
+  if(!$('tab-rec').hidden){const f=REC.fix[REC.fix.length-1],i=REC.imu[REC.imu.length-1];
+    $('r_prev').textContent=FIX_COLS.join(',')+'\n'+(f?f.join(','):'(아직 없음)')+'\n'+IMU_COLS.join(',')+'\n'+(i?i.join(','):'(아직 없음)');}
+}
+$('r_toggle').onclick=()=>REC.on?recStop():recStart();
+$('r_mark').onclick=recMark;
+$('r_new').onclick=()=>{if((!REC.fix.length&&!REC.imu.length)||confirm('지금까지의 기록을 지우고 새로 시작할까요? 내보내지 않은 데이터는 사라집니다.'))recClear();};
+$('r_gps').onclick=()=>{recFlush();dl('foottrack_'+stamp()+'_gps.csv',csv(FIX_COLS,REC.fix),'text/csv');};
+$('r_imu').onclick=()=>{recFlush();dl('foottrack_'+stamp()+'_imu.csv',csv(IMU_COLS,REC.imu),'text/csv');};
+$('r_json').onclick=()=>{recFlush();dl('foottrack_'+stamp()+'.json',JSON.stringify({meta:REC.meta,t0:REC.t0,marks:REC.marks,fix_cols:FIX_COLS,imu_cols:IMU_COLS,fix:REC.fix,imu:REC.imu}),'application/json');};
+$('r_auto').checked=autoRec;
+$('r_auto').onchange=()=>{autoRec=$('r_auto').checked;try{localStorage.setItem('ft_autorec',autoRec?'1':'0');}catch(_){}};
+setInterval(()=>{if(REC.on)recFlush();},5000);
+setInterval(recUi,1000);
+idbOpen().then(idbAll).then(all=>{                      // 새로고침·브라우저 종료 후 복구
+  for(const c of all){
+    if(c.k==='meta'){REC.t0=c.t0;REC.meta=c.meta;metaSaved=true;}
+    else if(c.k==='fix')for(const r of c.rows)REC.fix.push(r);
+    else if(c.k==='imu')for(const r of c.rows)REC.imu.push(r);
+    else if(c.k==='mark')for(const r of c.rows)REC.marks.push(r);
+  }
+  flFix=REC.fix.length;flImu=REC.imu.length;flMark=REC.marks.length;
+  if(flFix||flImu)$('r_msg').textContent='이전 기록을 복구했습니다 (GPS '+flFix+'행, IMU '+flImu+'행). 이어서 기록되며, 새로 시작하려면 "새 기록"을 누르세요.';
+  recReady=true;recUi();
+}).catch(()=>{recReady=true;});
+
 /* ---- WiFi 경로: SSE ---- */
 function loadTrack(){return fetch('/track',{cache:'no-store'}).then(r=>r.json()).then(j=>setPts(j.pts.map(p=>[p[0],p[1]])));}
 function connectSse(){
   es=new EventSource('/events');
   es.addEventListener('fix',e=>{if(!bleOn)update(JSON.parse(e.data));});
-  es.addEventListener('imu',e=>{if(!bleOn){const j=JSON.parse(e.data);onImuBatch(j.s.map(v=>[v[0]/1000,v[1]/1000,v[2]/1000,v[3]/10,v[4]/10,v[5]/10]));}});
+  es.addEventListener('imu',e=>{if(!bleOn){const j=JSON.parse(e.data);onImuBatch(j.s.map(v=>[v[0]/1000,v[1]/1000,v[2]/1000,v[3]/10,v[4]/10,v[5]/10]),j.t);}});
   es.onopen=()=>{if(dropped){dropped=false;loadTrack().catch(()=>{});}};
   es.onerror=()=>{dropped=true;if(!bleOn)$('st').innerHTML='<b class="bad">● 연결 끊김</b> 재접속 중…';};
 }
@@ -327,7 +426,7 @@ function bleErrorHtml(err){
 function onFix(v){
   if(v.byteLength<20)return;
   const fl=v.getUint8(0);
-  update({fix:fl&1?1:0,gps:fl&2?1:0,imu:fl&4?1:0,pt:fl&8?1:0,
+  update({ms:v.byteLength>=24?v.getUint32(20,true):null,fix:fl&1?1:0,gps:fl&2?1:0,imu:fl&4?1:0,pt:fl&8?1:0,
     sat:v.getUint8(1),hdop:v.getUint8(2)/10,siv:v.getUint8(3)>>3,
     lat:v.getInt32(4,true)/1e7,lon:v.getInt32(8,true)/1e7,
     spd:v.getUint16(12,true)*0.036,crs:v.getUint16(14,true)/10,dist:v.getUint32(16,true)/100,
@@ -340,9 +439,10 @@ function onStats(v){
   if(v.byteLength>=23)showNav(v.getUint8(22));
 }
 function onImu(v){
-  const n=Math.floor(v.byteLength/12),arr=[];
-  for(let i=0;i<n;i++){const o=i*12;arr.push([v.getInt16(o,true)/1000,v.getInt16(o+2,true)/1000,v.getInt16(o+4,true)/1000,v.getInt16(o+6,true)/10,v.getInt16(o+8,true)/10,v.getInt16(o+10,true)/10]);}
-  if(n)onImuBatch(arr);
+  const hasT=v.byteLength>=16&&(v.byteLength-4)%12===0,base=hasT?4:0,ms=hasT?v.getUint32(0,true):null;
+  const n=Math.floor((v.byteLength-base)/12),arr=[];
+  for(let i=0;i<n;i++){const o=base+i*12;arr.push([v.getInt16(o,true)/1000,v.getInt16(o+2,true)/1000,v.getInt16(o+4,true)/1000,v.getInt16(o+6,true)/10,v.getInt16(o+8,true)/10,v.getInt16(o+10,true)/10]);}
+  if(n)onImuBatch(arr,ms);
 }
 function onHist(v){
   for(let o=0;o+8<=v.byteLength;o+=8){
@@ -375,7 +475,7 @@ $('gpx').onclick=e=>{
   a.href=u;a.download='foottrack.gpx';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),2000);
 };
 document.addEventListener('visibilitychange',()=>{if(bleOn&&document.visibilityState==='visible')keepAwake();});
-if(/^#(gps|imu|cfg)$/.test(location.hash)){                         // 주소 끝에 #imu, #cfg 를 붙이면 그 탭이 열린 채 시작
+if(/^#(gps|imu|cfg|rec)$/.test(location.hash)){                         // 주소 끝에 #imu, #cfg 를 붙이면 그 탭이 열린 채 시작
   gpOpen=true;$('gp').classList.add('open');
   document.querySelector('.tb[data-t="'+location.hash.slice(1)+'"]').click();
 }

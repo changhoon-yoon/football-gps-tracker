@@ -5,8 +5,12 @@
 
 // ---- 무선 선택 ----
 //  ENABLE_WIFI 1 + ENABLE_BLE 1 : 둘 다 (책상 테스트). BLE만 쓰면 WiFi를 0으로 → 배터리 2~3배
+#ifndef ENABLE_WIFI               // platformio.ini의 -D로 보드별 덮어쓰기 가능
 #define ENABLE_WIFI     1
+#endif
+#ifndef ENABLE_BLE
 #define ENABLE_BLE      1
+#endif
 #define BLE_NAME        "FootTrack"       // 폰 Web Bluetooth 기기 선택창에 보이는 이름
 
 // ---- 네트워크 ----
@@ -34,7 +38,9 @@
 
 // ---- 트랙 버퍼 (점 1개 = 12B) ----
 #define TRACK_MIN_STEP_M 1.0f  // 마지막 저장점에서 이만큼 벗어나야 새 점 저장 (정지 지터 블롭 방지)
-#define TRACK_CAP_SRAM   6000  // PSRAM 없을 때 (72KB)
+#ifndef TRACK_CAP_SRAM
+#define TRACK_CAP_SRAM   6000  // PSRAM 없을 때 (72KB). C3 환경은 platformio.ini에서 3000으로 줄임
+#endif
 #define TRACK_CAP_PSRAM  60000 // PSRAM 있을 때 (720KB) — 가득 차면 절반으로 솎아내며 계속 기록
 
 // ---- IMU ----

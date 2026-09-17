@@ -77,6 +77,13 @@ Android는 mDNS(`.local`)를 브라우저에서 못 푸는 경우가 많으니 I
     좌표가 10Hz로 흐르는 피드(최근 60줄), 좌표 복사·지도앱 열기.
   - IMU: 가속도 3축(g)·각속도 3축(°/s) 수치와 최근 6초 스트립 차트, 합성 가속도 |a|, 10초 피크, PlayerLoad,
     가속도 기준 피치·롤 기울기 표시기. 스트림은 100Hz 중 25Hz를 200ms마다 5개씩 묶어 보낸다(SSE `imu` 이벤트 / BLE IMU 특성).
+  - 기록: 원본 스트림(GPS 10Hz, IMU 25Hz)을 폰에 저장하고 내보낸다. 데이터가 들어오면 자동으로 기록을 시작하고
+    5초마다 브라우저 저장소(IndexedDB)에 보존해 새로고침해도 이어진다. 상태줄에 `● REC` 표시.
+    - 구간 마커: 검증 프로토콜 T1~T6(또는 직접 입력)을 고르고 "구간 시작/끝" → CSV의 `marker` 열에 기록.
+    - GPS CSV 열: `t_ms`(폰 기준 경과), `dev_ms`(기기 millis, GPS·IMU 공통 시간축), `utc`, `fix`, `lat`, `lon`, `alt_m`,
+      `spd_kmh`(모듈 원시 Doppler 속도), `crs_deg`, `sat`, `siv`, `hdop`, `dist_m`(기기 누적), `nav`, `src`(ble/sse), `marker`
+    - IMU CSV 열: `t_ms`, `dev_ms`, `ax_g`, `ay_g`, `az_g`, `gx_dps`, `gy_dps`, `gz_dps`, `marker` (샘플 간격 40ms)
+    - 전체 JSON은 메타·마커 목록·두 표를 한 파일에 담는다. 저장소는 주소(origin)별이라 Pages 주소와 ESP 주소의 기록은 따로다.
   - 설정: GPS 항법 모드(0 휴대 / 1 정지 / 2 보행 / 3 차량)를 기기에서 바로 바꾼다. WiFi는 `POST /config nav=N`,
     BLE는 CTRL 쓰기 `[0x10, N]`. NVS에 저장되어 재부팅 후 유지. 현재값은 SSE `nav` / BLE STATS 23번째 바이트로 확인.
 - **리셋**: 세션·동선 초기화. **GPX**: 표준 GPX 파일 다운로드(Google Earth, Strava 등에서 열림)
